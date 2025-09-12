@@ -1,0 +1,67 @@
+interface BottomNavigationProps {
+  activeTab: string;
+  setActiveTab: (tabId: string) => void;
+}
+
+const tabs = [
+  { id: 'booths', icon: '/booth.png', label: 'Booths' },
+  { id: 'shop', icon: '/shop.png', label: 'Shop' },
+  { id: 'discover', icon: '/discover.png', label: 'Discover' },
+  { id: 'message', icon: '/message.png', label: 'Messages' },
+  { id: 'profile', icon: '/profile.png', label: 'Profile' }
+];
+
+export default function BottomNavigation({ activeTab, setActiveTab }: BottomNavigationProps) {
+  const styles = {
+    bottomNav: {
+      position: 'fixed' as const,
+      bottom: 0,
+      left: '50%',
+      transform: 'translateX(-50%)',
+      width: '100%',
+      maxWidth: '375px',
+      backgroundColor: 'white',
+      borderTop: '1px solid #e5e7eb',
+      display: 'flex',
+      justifyContent: 'space-around',
+      padding: '8px 0'
+    },
+    navButton: {
+      background: 'none',
+      border: 'none',
+      padding: '12px',
+      cursor: 'pointer',
+      fontSize: '20px'
+    }
+  };
+
+  return (
+    <div style={styles.bottomNav}>
+      {tabs.map(tab => (
+        <button
+          key={tab.id}
+          onClick={() => setActiveTab(tab.id)}
+          style={{
+            ...styles.navButton,
+            color: tab.id === activeTab ? '#2563eb' : '#9ca3af',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: '4px'
+          }}
+        >
+          <img 
+            src={tab.icon} 
+            alt={tab.label}
+            style={{
+              width: '24px',
+              height: '24px',
+              opacity: tab.id === activeTab ? 1 : 0.6,
+              transition: 'opacity 0.2s ease'
+            }}
+          />
+        </button>
+      ))}
+    </div>
+  );
+}

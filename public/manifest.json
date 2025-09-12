@@ -1,0 +1,28 @@
+{
+  "name": "Lantin - Discover Local Artists",
+  "short_name": "Lantin",
+  "description": "Community platform for discovering and supporting emerging artists",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#9333ea",
+  "orientation": "portrait",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/vite.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["social", "lifestyle", "entertainment"],
+  "screenshots": [
+    {
+      "src": "/vite.svg",
+      "sizes": "390x844",
+      "type": "image/svg+xml",
+      "form_factor": "narrow"
+    }
+  ]
+}
