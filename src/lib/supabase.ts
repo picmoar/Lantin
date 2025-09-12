@@ -8,8 +8,18 @@ let supabase: any = null;
 
 if (supabaseUrl && supabaseAnonKey) {
   try {
-    supabase = createClient(supabaseUrl, supabaseAnonKey);
-    console.log('✅ Supabase connected successfully');
+    supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        // Better mobile support
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true,
+        flowType: 'pkce', // More secure for mobile
+        // Handle URL fragments properly on mobile
+        storage: typeof window !== 'undefined' ? window.localStorage : undefined
+      }
+    });
+    console.log('✅ Supabase connected successfully with mobile auth support');
   } catch (error) {
     console.warn('⚠️ Supabase connection failed:', error);
   }

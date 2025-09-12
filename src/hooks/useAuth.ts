@@ -41,16 +41,42 @@ export function useAuth() {
     }
   };
 
+  const isMobile = () => {
+    return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+  };
+
   const handleGoogleLogin = async () => {
     console.log('Google login clicked');
     try {
-      const { data, error } = await supabase.auth.signInWithOAuth({
+      // For mobile devices, use redirect instead of popup
+      const authOptions = {
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}`
+          redirectTo: `${window.location.origin}`,
+          // Force redirect mode on mobile to avoid popup issues
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          }
         }
-      });
-      if (error) throw error;
+      };
+
+      // Use redirect for mobile, popup for desktop
+      if (isMobile()) {
+        console.log('Mobile detected, using redirect auth');
+        const { error } = await supabase.auth.signInWithOAuth(authOptions);
+        if (error) throw error;
+      } else {
+        console.log('Desktop detected, using popup auth');
+        const { data, error } = await supabase.auth.signInWithOAuth({
+          ...authOptions,
+          options: {
+            ...authOptions.options,
+            skipBrowserRedirect: false
+          }
+        });
+        if (error) throw error;
+      }
     } catch (error) {
       console.error('Google login error:', error);
       alert('Google login failed: ' + error.message);
