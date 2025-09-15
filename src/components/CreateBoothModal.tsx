@@ -29,21 +29,59 @@ interface UserProfile {
   profileImage: string;
 }
 
+interface AuthUser {
+  id?: string;
+}
+
 interface CreateBoothModalProps {
   onClose: () => void;
   onSubmit: (boothData: BoothData) => void;
   userProfile: UserProfile;
+  supabase: any;
+  user: AuthUser;
   initialData?: Partial<BoothData>;
   isEditing?: boolean;
 }
 
-const CreateBoothModal: React.FC<CreateBoothModalProps> = ({ 
-  onClose, 
-  onSubmit, 
-  userProfile, 
-  initialData, 
-  isEditing 
+// Shared styles
+const styles = {
+  input: {
+    width: '100%',
+    padding: '12px 16px',
+    border: '1px solid #d1d5db',
+    borderRadius: '8px',
+    fontSize: '14px',
+    backgroundColor: '#f9fafb'
+  },
+  label: {
+    display: 'block',
+    fontSize: '14px',
+    fontWeight: '600',
+    color: '#1f2937',
+    marginBottom: '8px'
+  },
+  textarea: {
+    width: '100%',
+    padding: '12px 16px',
+    border: '1px solid #d1d5db',
+    borderRadius: '8px',
+    fontSize: '14px',
+    backgroundColor: '#f9fafb',
+    minHeight: '80px',
+    resize: 'vertical' as const
+  }
+};
+
+const CreateBoothModal: React.FC<CreateBoothModalProps> = ({
+  onClose,
+  onSubmit,
+  userProfile,
+  supabase,
+  user,
+  initialData,
+  isEditing = false
 }) => {
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [boothData, setBoothData] = useState<BoothData>(initialData || {
     name: '',
     description: '',
@@ -75,22 +113,38 @@ const CreateBoothModal: React.FC<CreateBoothModalProps> = ({
       }
 
       try {
-        const loader = new Loader({
-          apiKey: apiKey,
-          version: 'weekly',
-          libraries: ['places']
-        });
+        let google;
 
-        const google = await loader.load();
+        // Check if Google Maps API is already loaded
+        if (window.google && window.google.maps && window.google.maps.places) {
+          google = window.google;
+        } else {
+          const loader = new Loader({
+            apiKey: apiKey,
+            version: 'weekly',
+            libraries: ['places', 'geometry']
+          });
+          google = await loader.load();
+        }
+
         googleApiRef.current = google;
-        
+
         const autocomplete = new google.maps.places.AutocompleteService();
         const places = new google.maps.places.PlacesService(document.createElement('div'));
-        
+
         setAutocompleteService(autocomplete);
         setPlacesService(places);
       } catch (error) {
         console.error('Error loading Google Places:', error);
+        // Try to use existing Google API if loader fails
+        if (window.google && window.google.maps && window.google.maps.places) {
+          const google = window.google;
+          googleApiRef.current = google;
+          const autocomplete = new google.maps.places.AutocompleteService();
+          const places = new google.maps.places.PlacesService(document.createElement('div'));
+          setAutocompleteService(autocomplete);
+          setPlacesService(places);
+        }
       }
     };
 
@@ -192,9 +246,24 @@ const CreateBoothModal: React.FC<CreateBoothModalProps> = ({
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(boothData);
+
+    if (isSubmitting) {
+      console.log('🏪 Already submitting, preventing duplicate submission');
+      return;
+    }
+
+    setIsSubmitting(true);
+    console.log('🏪 Form submitted, calling onSubmit...');
+
+    try {
+      await onSubmit(boothData);
+    } catch (error) {
+      console.error('🏪 Submit error:', error);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -202,54 +271,78 @@ const CreateBoothModal: React.FC<CreateBoothModalProps> = ({
     if (!file) return;
 
     try {
-      if (supabase) {
-        // Upload to Supabase Storage
-        const fileExt = file.name.split('.').pop();
-        const fileName = `booth-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
-        
-        const { data, error } = await supabase.storage
-          .from('booth')
-          .upload(fileName, file);
+      console.log('🏪 Image upload - supabase:', !!supabase, 'user:', user, 'user.id:', user?.id);
 
-        if (error) {
-          console.error('Supabase upload error:', error);
-          // Fall back to local URL
-          const fileUrl = URL.createObjectURL(file);
-          setBoothData({
-            ...boothData, 
-            image: fileUrl,
-            fileName: file.name,
-            fileType: file.type,
-            fileSize: file.size
-          });
-        } else {
+      // Check if we have Supabase and should attempt cloud upload
+      if (supabase && user?.id) {
+        // Verify we have a valid session first
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        console.log('🏪 Session check:', { session: !!session, sessionUser: !!session?.user, error: sessionError });
+
+        if (session && session.user) {
+          // Real user with valid Supabase session - try cloud upload
+          console.log('📤 Attempting Supabase booth storage upload...');
+          console.log('📤 Session user ID:', session.user.id);
+          console.log('📤 File details:', { name: file.name, size: file.size, type: file.type });
+
+          const fileExt = file.name.split('.').pop();
+          const fileName = `${session.user.id}/${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
+          console.log('📤 Upload filename:', fileName);
+
+          const { data, error } = await supabase.storage
+            .from('booth')
+            .upload(fileName, file);
+
+          if (error) {
+            console.error('Upload error:', error);
+            throw new Error(`Failed to upload ${file.name}: ${error.message}`);
+          }
+
           // Get public URL
           const { data: { publicUrl } } = supabase.storage
             .from('booth')
             .getPublicUrl(fileName);
 
           setBoothData({
-            ...boothData, 
+            ...boothData,
             image: publicUrl,
             fileName: file.name,
             fileType: file.type,
             fileSize: file.size
           });
+          console.log(`✅ Uploaded booth image to Supabase storage`);
+          return;
         }
-      } else {
-        // No Supabase, use local URL
-        const fileUrl = URL.createObjectURL(file);
-        setBoothData({
-          ...boothData, 
-          image: fileUrl,
-          fileName: file.name,
-          fileType: file.type,
-          fileSize: file.size
-        });
       }
+
+      // Fallback to local URLs (demo user, no session, or RLS issues)
+      console.log('📱 Using local file URL (demo mode or no valid session)');
+      const fileUrl = URL.createObjectURL(file);
+      setBoothData({
+        ...boothData,
+        image: fileUrl,
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: file.size
+      });
+
+      console.log('📱 Created local object URL for booth image');
+
     } catch (error) {
-      console.error('Error handling image upload:', error);
-      alert('Failed to upload image');
+      console.error('Upload error:', error);
+
+      // If cloud upload fails, fallback to local URLs
+      console.log('🔄 Cloud upload failed, falling back to local URL...');
+      const fileUrl = URL.createObjectURL(file);
+      setBoothData({
+        ...boothData,
+        image: fileUrl,
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: file.size
+      });
+
+      alert(`Cloud upload failed, using local image instead. Error: ${error.message}`);
     }
   };
 
@@ -258,46 +351,76 @@ const CreateBoothModal: React.FC<CreateBoothModalProps> = ({
     if (!files || files.length === 0) return;
 
     try {
-      const uploadedPhotos: string[] = [];
-      
-      for (let i = 0; i < Math.min(files.length, 4); i++) {
-        const file = files[i];
-        
-        if (supabase) {
-          // Upload to Supabase Storage
-          const fileExt = file.name.split('.').pop();
-          const fileName = `booth-highlight-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
-          
-          const { data, error } = await supabase.storage
-            .from('booth')
-            .upload(fileName, file);
+      // Check if we have Supabase and should attempt cloud upload
+      if (supabase && user?.id) {
+        // Verify we have a valid session first
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
-          if (error) {
-            console.error('Supabase upload error:', error);
-            // Fall back to local URL
-            const fileUrl = URL.createObjectURL(file);
-            uploadedPhotos.push(fileUrl);
-          } else {
+        if (session && session.user) {
+          // Real user with valid Supabase session - try cloud upload
+          console.log('📤 Attempting Supabase booth storage upload for highlights...');
+
+          const uploadPromises = Array.from(files).slice(0, 4).map(async (file, i) => {
+            // Create unique filename
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${session.user.id}/highlights/${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
+
+            // Upload to Supabase storage
+            const { data, error } = await supabase.storage
+              .from('booth')
+              .upload(fileName, file);
+
+            if (error) {
+              console.error('Upload error:', error);
+              throw new Error(`Failed to upload ${file.name}: ${error.message}`);
+            }
+
             // Get public URL
             const { data: { publicUrl } } = supabase.storage
               .from('booth')
               .getPublicUrl(fileName);
-            uploadedPhotos.push(publicUrl);
-          }
-        } else {
-          // No Supabase, use local URL
-          const fileUrl = URL.createObjectURL(file);
-          uploadedPhotos.push(fileUrl);
+
+            return publicUrl;
+          });
+
+          const uploadedUrls = await Promise.all(uploadPromises);
+          setBoothData(prev => ({
+            ...prev,
+            highlight_photos: [...(prev.highlight_photos || []), ...uploadedUrls]
+          }));
+          console.log(`✅ Uploaded ${uploadedUrls.length} highlight images to Supabase booth storage`);
+          return;
         }
       }
 
-      setBoothData({
-        ...boothData,
-        highlight_photos: [...(boothData.highlight_photos || []), ...uploadedPhotos]
+      // Fallback to local URLs (demo user, no session, or RLS issues)
+      console.log('📱 Using local file URLs for highlights (demo mode or no valid session)');
+      const fileUrls = Array.from(files).slice(0, 4).map(file => {
+        return URL.createObjectURL(file);
       });
+
+      setBoothData(prev => ({
+        ...prev,
+        highlight_photos: [...(prev.highlight_photos || []), ...fileUrls]
+      }));
+
+      console.log(`📱 Created ${fileUrls.length} local object URLs for highlight images`);
+
     } catch (error) {
-      console.error('Error handling highlight photos upload:', error);
-      alert('Failed to upload highlight photos');
+      console.error('Upload error:', error);
+
+      // If cloud upload fails, fallback to local URLs
+      console.log('🔄 Cloud upload failed, falling back to local URLs...');
+      const fileUrls = Array.from(files).slice(0, 4).map(file => {
+        return URL.createObjectURL(file);
+      });
+
+      setBoothData(prev => ({
+        ...prev,
+        highlight_photos: [...(prev.highlight_photos || []), ...fileUrls]
+      }));
+
+      alert(`Cloud upload failed, using local images instead. Error: ${error.message}`);
     }
   };
 
@@ -385,7 +508,7 @@ const CreateBoothModal: React.FC<CreateBoothModalProps> = ({
         <form onSubmit={handleSubmit} style={{display: 'flex', flexDirection: 'column', gap: '24px'}}>
           {/* Basic Information */}
           <div>
-            <label style={{display: 'block', fontSize: '14px', fontWeight: '600', color: '#1f2937', marginBottom: '8px'}}>
+            <label style={styles.label}>
               Booth Name <span style={{color: '#ef4444'}}>*</span>
             </label>
             <input
@@ -394,19 +517,12 @@ const CreateBoothModal: React.FC<CreateBoothModalProps> = ({
               onChange={(e) => setBoothData({...boothData, name: e.target.value})}
               placeholder="My Art Studio"
               required
-              style={{
-                width: '100%',
-                padding: '12px 16px',
-                border: '1px solid #d1d5db',
-                borderRadius: '8px',
-                fontSize: '14px',
-                backgroundColor: '#f9fafb'
-              }}
+              style={styles.input}
             />
           </div>
 
           <div>
-            <label style={{display: 'block', fontSize: '14px', fontWeight: '600', color: '#1f2937', marginBottom: '8px'}}>
+            <label style={styles.label}>
               👤 Booth Operator <span style={{color: '#ef4444'}}>*</span>
             </label>
             <input
@@ -415,19 +531,12 @@ const CreateBoothModal: React.FC<CreateBoothModalProps> = ({
               onChange={(e) => setBoothData({...boothData, operator_name: e.target.value})}
               placeholder="Your name or business name"
               required
-              style={{
-                width: '100%',
-                padding: '12px 16px',
-                border: '1px solid #d1d5db',
-                borderRadius: '8px',
-                fontSize: '14px',
-                backgroundColor: '#f9fafb'
-              }}
+              style={styles.input}
             />
           </div>
 
           <div>
-            <label style={{display: 'block', fontSize: '14px', fontWeight: '600', color: '#1f2937', marginBottom: '8px'}}>
+            <label style={styles.label}>
               Description
             </label>
             <textarea
@@ -801,19 +910,24 @@ const CreateBoothModal: React.FC<CreateBoothModalProps> = ({
             </button>
             <button
               type="submit"
+              disabled={isSubmitting}
               style={{
                 flex: 1,
                 padding: '16px',
-                backgroundColor: '#f59e0b',
+                backgroundColor: isSubmitting ? '#9ca3af' : '#f59e0b',
                 color: 'white',
                 border: 'none',
                 borderRadius: '8px',
                 fontSize: '14px',
                 fontWeight: '600',
-                cursor: 'pointer'
+                cursor: isSubmitting ? 'not-allowed' : 'pointer',
+                opacity: isSubmitting ? 0.7 : 1
               }}
             >
-              {isEditing ? 'Update Booth' : 'Create Booth'}
+              {isSubmitting
+                ? (isEditing ? 'Updating...' : 'Creating...')
+                : (isEditing ? 'Update Booth' : 'Create Booth')
+              }
             </button>
           </div>
         </form>

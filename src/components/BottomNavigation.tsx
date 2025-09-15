@@ -5,7 +5,7 @@ interface BottomNavigationProps {
 
 const tabs = [
   { id: 'booths', icon: '/booth.png', label: 'Booths' },
-  { id: 'shop', icon: '/shop.png', label: 'Shop' },
+  { id: 'map', icon: '/map.png', label: 'Map' },
   { id: 'discover', icon: '/discover.png', label: 'Discover' },
   { id: 'message', icon: '/message.png', label: 'Messages' },
   { id: 'profile', icon: '/profile.png', label: 'Profile' }
@@ -24,7 +24,8 @@ export default function BottomNavigation({ activeTab, setActiveTab }: BottomNavi
       borderTop: '1px solid #e5e7eb',
       display: 'flex',
       justifyContent: 'space-around',
-      padding: '8px 0'
+      padding: '8px 0',
+      zIndex: 1002
     },
     navButton: {
       background: 'none',

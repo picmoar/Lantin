@@ -5,7 +5,6 @@ export function useSocial() {
   const [following, setFollowing] = useState([]);
   const [followingCount, setFollowingCount] = useState(156);
   const [followersCount, setFollowersCount] = useState(89);
-  const [savedBooths, setSavedBooths] = useState([]);
 
   const addToFavorites = (artist) => {
     if (!favorites.find(fav => fav.id === artist.id)) {
@@ -34,7 +33,6 @@ export function useSocial() {
     following,
     followingCount,
     followersCount,
-    savedBooths,
     addToFavorites,
     removeFromFavorites,
     followArtist,

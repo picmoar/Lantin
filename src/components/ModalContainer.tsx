@@ -77,10 +77,12 @@ export default function ModalContainer({
     <>
       {/* Create Event Modal */}
       {modalState.showCreateEventModal && (
-        <CreateEventModal 
+        <CreateEventModal
           onClose={() => modalHandlers.setShowCreateEventModal(false)}
           onSubmit={createEvent}
           userProfile={auth.userProfile}
+          supabase={supabase}
+          user={user}
         />
       )}
 
@@ -97,19 +99,23 @@ export default function ModalContainer({
 
       {/* Create Booth Modal */}
       {modalState.showCreateBoothModal && (
-        <CreateBoothModal 
+        <CreateBoothModal
           onClose={() => modalHandlers.setShowCreateBoothModal(false)}
           onSubmit={createBooth}
           userProfile={auth.userProfile}
+          supabase={supabase}
+          user={user}
         />
       )}
 
       {/* Edit Booth Modal */}
       {modalState.showEditBoothModal && userBooth && (
-        <CreateBoothModal 
+        <CreateBoothModal
           onClose={() => modalHandlers.setShowEditBoothModal(false)}
           onSubmit={updateBooth}
           userProfile={auth.userProfile}
+          supabase={supabase}
+          user={user}
           initialData={userBooth}
           isEditing={true}
         />

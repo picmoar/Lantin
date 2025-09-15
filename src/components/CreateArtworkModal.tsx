@@ -7,6 +7,7 @@ interface ArtworkData {
   year: string;
   dimensions: string;
   images: string[];
+  price: number | null;
 }
 
 interface UserProfile {
@@ -27,22 +28,27 @@ interface CreateArtworkModalProps {
   userProfile: UserProfile;
   supabase: any;
   user: AuthUser;
+  initialData?: any;
+  isEditing?: boolean;
 }
 
-const CreateArtworkModal: React.FC<CreateArtworkModalProps> = ({ 
-  onClose, 
-  onSubmit, 
-  userProfile, 
-  supabase, 
-  user 
+const CreateArtworkModal: React.FC<CreateArtworkModalProps> = ({
+  onClose,
+  onSubmit,
+  userProfile,
+  supabase,
+  user,
+  initialData,
+  isEditing = false
 }) => {
   const [artworkData, setArtworkData] = useState<ArtworkData>({
-    title: '',
-    description: '',
-    medium: '',
-    year: new Date().getFullYear().toString(),
-    dimensions: '',
-    images: []
+    title: initialData?.title || '',
+    description: initialData?.description || '',
+    medium: initialData?.medium || '',
+    year: initialData?.year || new Date().getFullYear().toString(),
+    dimensions: initialData?.dimensions || '',
+    images: initialData?.photos ? initialData.photos.map(photo => photo.url).filter(Boolean) : [],
+    price: initialData?.price || null
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -56,40 +62,79 @@ const CreateArtworkModal: React.FC<CreateArtworkModalProps> = ({
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (files && supabase && user) {
-      try {
-        const uploadPromises = Array.from(files).map(async (file) => {
-          // Create unique filename
-          const fileExt = file.name.split('.').pop();
-          const fileName = `${user?.id}/${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
+    if (!files || files.length === 0) return;
+    
+    try {
+      // Check if we have Supabase and should attempt cloud upload
+      if (supabase && user?.id) {
+        // Verify we have a valid session first
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (session && session.user) {
+          // Real user with valid Supabase session - try cloud upload
+          console.log('📤 Attempting Supabase storage upload...');
           
-          // Upload to Supabase storage
-          const { data, error } = await supabase.storage
-            .from('artworks')
-            .upload(fileName, file);
+          const uploadPromises = Array.from(files).map(async (file) => {
+            // Create unique filename
+            const fileExt = file.name.split('.').pop();
+            const fileName = `${session.user.id}/${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
+            
+            // Upload to Supabase storage
+            const { data, error } = await supabase.storage
+              .from('artworks')
+              .upload(fileName, file);
 
-          if (error) {
-            console.error('Upload error:', error);
-            throw new Error('Failed to upload image');
-          }
+            if (error) {
+              console.error('Upload error:', error);
+              throw new Error(`Failed to upload ${file.name}: ${error.message}`);
+            }
 
-          // Get public URL
-          const { data: { publicUrl } } = supabase.storage
-            .from('artworks')
-            .getPublicUrl(fileName);
+            // Get public URL
+            const { data: { publicUrl } } = supabase.storage
+              .from('artworks')
+              .getPublicUrl(fileName);
 
-          return publicUrl;
-        });
+            return publicUrl;
+          });
 
-        const uploadedUrls = await Promise.all(uploadPromises);
-        setArtworkData(prev => ({
-          ...prev,
-          images: [...prev.images, ...uploadedUrls]
-        }));
-      } catch (error) {
-        console.error('Upload error:', error);
-        alert('Failed to upload images');
+          const uploadedUrls = await Promise.all(uploadPromises);
+          setArtworkData(prev => ({
+            ...prev,
+            images: [...prev.images, ...uploadedUrls]
+          }));
+          console.log(`✅ Uploaded ${uploadedUrls.length} images to Supabase storage`);
+          return;
+        }
       }
+      
+      // Fallback to local URLs (demo user, no session, or RLS issues)
+      console.log('📱 Using local file URLs (demo mode or no valid session)');
+      const fileUrls = Array.from(files).map(file => {
+        return URL.createObjectURL(file);
+      });
+      
+      setArtworkData(prev => ({
+        ...prev,
+        images: [...prev.images, ...fileUrls]
+      }));
+      
+      console.log(`📱 Created ${fileUrls.length} local object URLs for images`);
+      
+    } catch (error) {
+      console.error('Upload error:', error);
+      
+      // If cloud upload fails, fallback to local URLs
+      console.log('🔄 Cloud upload failed, falling back to local URLs...');
+      const fileUrls = Array.from(files).map(file => {
+        return URL.createObjectURL(file);
+      });
+      
+      setArtworkData(prev => ({
+        ...prev,
+        images: [...prev.images, ...fileUrls]
+      }));
+      
+      alert(`Cloud upload failed, using local images instead. Error: ${error.message}`);
     }
   };
 
@@ -111,7 +156,7 @@ const CreateArtworkModal: React.FC<CreateArtworkModalProps> = ({
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: 1000,
+      zIndex: 3500,
       padding: '20px'
     }}>
       <div style={{
@@ -125,7 +170,9 @@ const CreateArtworkModal: React.FC<CreateArtworkModalProps> = ({
       }}>
         {/* Header */}
         <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px'}}>
-          <h2 style={{fontSize: '24px', fontWeight: '700', color: '#1f2937', margin: 0}}>Add New Artwork</h2>
+          <h2 style={{fontSize: '24px', fontWeight: '700', color: '#1f2937', margin: 0}}>
+            {isEditing ? 'Edit Artwork' : 'Add New Artwork'}
+          </h2>
           <button 
             onClick={onClose} 
             style={{
@@ -349,6 +396,51 @@ const CreateArtworkModal: React.FC<CreateArtworkModalProps> = ({
             />
           </div>
 
+          {/* Price */}
+          <div>
+            <label style={{display: 'block', fontSize: '14px', fontWeight: '600', color: '#1f2937', marginBottom: '8px'}}>
+              Price (optional)
+            </label>
+            <div style={{position: 'relative'}}>
+              <span style={{
+                position: 'absolute',
+                left: '16px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                color: '#6b7280',
+                fontSize: '14px',
+                fontWeight: '500'
+              }}>$</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={artworkData.price || ''}
+                onChange={(e) => setArtworkData({
+                  ...artworkData,
+                  price: e.target.value ? parseFloat(e.target.value) : null
+                })}
+                placeholder="0.00"
+                style={{
+                  width: '100%',
+                  padding: '12px 16px 12px 32px',
+                  border: '1px solid #d1d5db',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  backgroundColor: '#f9fafb'
+                }}
+              />
+            </div>
+            <p style={{
+              fontSize: '12px',
+              color: '#6b7280',
+              margin: '4px 0 0 0',
+              lineHeight: '1.4'
+            }}>
+              Leave empty if not for sale. Setting a price automatically marks the artwork as available for purchase.
+            </p>
+          </div>
+
           {/* Action Buttons */}
           <div style={{display: 'flex', gap: '12px', marginTop: '8px'}}>
             <button
@@ -382,7 +474,7 @@ const CreateArtworkModal: React.FC<CreateArtworkModalProps> = ({
                 cursor: 'pointer'
               }}
             >
-              Save Artwork
+              {isEditing ? 'Update Artwork' : 'Save Artwork'}
             </button>
           </div>
         </form>

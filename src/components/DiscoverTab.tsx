@@ -28,6 +28,31 @@ export default function DiscoverTab({
   setFollowingCount,
   followingCount
 }: DiscoverTabProps) {
+  // Helper functions to check login before actions
+  const handleAddToFavorites = (artist: any) => {
+    if (!auth.isLoggedIn) {
+      alert('Please sign in to like artists! 💕\n\nTap the Profile tab to create your account.');
+      return;
+    }
+    addToFavorites(artist);
+  };
+
+  const handleFollowArtist = (artist: any) => {
+    if (!auth.isLoggedIn) {
+      alert('Please sign in to follow artists! 👥\n\nTap the Profile tab to create your account.');
+      return;
+    }
+    followArtist(artist);
+  };
+
+  const handleAddToCart = (item: any) => {
+    if (!auth.isLoggedIn) {
+      alert('Please sign in to add items to cart! 🛒\n\nTap the Profile tab to create your account.');
+      return;
+    }
+    addToCart(item);
+  };
+
   const [currentArtistIndex, setCurrentArtistIndex] = useState(0);
   const [currentArtworkIndex, setCurrentArtworkIndex] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -68,7 +93,7 @@ export default function DiscoverTab({
     
     setLikeAnimation(true);
     setShowHearts(true);
-    addToFavorites(currentArtist);
+    handleAddToFavorites(currentArtist);
     
     setTimeout(() => {
       setLikeAnimation(false);
@@ -586,7 +611,7 @@ export default function DiscoverTab({
                   border: '1px solid #e5e7eb',
                   cursor: 'pointer'
                 }}
-                onClick={() => addToCart({
+                onClick={() => handleAddToCart({
                   id: `artwork-${idx}`,
                   title: artwork.title,
                   price: parseFloat(artwork.price.replace('$', '').replace(',', '')),
@@ -635,8 +660,10 @@ export default function DiscoverTab({
             <div style={{display: 'flex', gap: '8px', marginTop: '12px'}}>
               <button 
                 onClick={() => {
-                  followArtist(currentArtist);
-                  alert(`Now following ${currentArtist.name}!`);
+                  handleFollowArtist(currentArtist);
+                  if (auth.isLoggedIn) {
+                    alert(`Now following ${currentArtist.name}!`);
+                  }
                 }}
                 style={{
                 backgroundColor: '#1f2937',

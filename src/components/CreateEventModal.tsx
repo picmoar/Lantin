@@ -32,22 +32,66 @@ interface UserProfile {
   profileImage: string;
 }
 
+interface AuthUser {
+  id?: string;
+}
+
 interface CreateEventModalProps {
   onClose: () => void;
   onSubmit: (eventData: EventData) => void;
   userProfile: UserProfile;
+  supabase: any;
+  user: AuthUser;
   initialData?: Partial<EventData>;
   isEditing?: boolean;
 }
 
-const CreateEventModal: React.FC<CreateEventModalProps> = ({ 
-  onClose, 
-  onSubmit, 
+const CreateEventModal: React.FC<CreateEventModalProps> = ({
+  onClose,
+  onSubmit,
   userProfile,
+  supabase,
+  user,
   initialData,
-  isEditing
+  isEditing = false
 }) => {
-  const [eventData, setEventData] = useState<EventData>(initialData || {
+  // Consolidated styles to reduce redundancy
+  const styles = {
+    input: {
+      width: '100%',
+      padding: '12px 16px',
+      border: '1px solid #d1d5db',
+      borderRadius: '8px',
+      fontSize: '14px',
+      backgroundColor: '#f9fafb'
+    },
+    label: {
+      display: 'block',
+      fontSize: '14px',
+      fontWeight: '600',
+      color: '#1f2937',
+      marginBottom: '8px'
+    },
+    subLabel: {
+      display: 'block',
+      fontSize: '12px',
+      fontWeight: '500',
+      color: '#6b7280',
+      marginBottom: '4px'
+    },
+    textarea: {
+      width: '100%',
+      padding: '12px 16px',
+      border: '1px solid #d1d5db',
+      borderRadius: '8px',
+      fontSize: '14px',
+      fontFamily: 'inherit',
+      backgroundColor: '#f9fafb',
+      resize: 'vertical' as const
+    }
+  };
+
+  const [eventData, setEventData] = useState<EventData>({
     title: '',
     description: '',
     location: '',
@@ -63,7 +107,8 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({
     highlight_photos: [],
     latitude: null,
     longitude: null,
-    formatted_address: ''
+    formatted_address: '',
+    ...initialData
   });
   const [showLocationPicker, setShowLocationPicker] = useState(false);
   const [autocompleteService, setAutocompleteService] = useState<any>(null);
@@ -81,13 +126,22 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({
       }
 
       try {
-        const loader = new Loader({
-          apiKey: apiKey,
-          version: 'weekly',
-          libraries: ['places']
-        });
+        let google;
 
-        const google = await loader.load();
+        // Check if Google Maps API is already loaded to avoid "Loader must not be called again" error
+        if (window.google && window.google.maps && window.google.maps.places) {
+          console.log('📍 Using existing Google Maps API instance');
+          google = window.google;
+        } else {
+          console.log('📍 Loading Google Maps API for Places...');
+          const loader = new Loader({
+            apiKey: apiKey,
+            version: 'weekly',
+            libraries: ['places', 'geometry']
+          });
+          google = await loader.load();
+        }
+
         googleApiRef.current = google;
         
         const autocomplete = new google.maps.places.AutocompleteService();
@@ -203,59 +257,64 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({
     onSubmit(eventData);
   };
 
+  // Consolidated upload function to reduce code duplication
+  const uploadToSupabase = async (file: File, pathPrefix = '', storageType = 'single') => {
+    try {
+      // Check if we have Supabase and should attempt cloud upload
+      if (supabase && user?.id) {
+        // Verify we have a valid session first
+        const { data: { session } } = await supabase.auth.getSession();
+
+        if (session && session.user) {
+          console.log(`📤 Attempting Supabase events storage upload${storageType === 'highlight' ? ' for highlights' : ''}...`);
+
+          const fileExt = file.name.split('.').pop();
+          const fileName = `${session.user.id}/${pathPrefix}${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
+
+          const { data, error } = await supabase.storage
+            .from('events')
+            .upload(fileName, file);
+
+          if (error) {
+            throw new Error(`Failed to upload ${file.name}: ${error.message}`);
+          }
+
+          // Get public URL
+          const { data: { publicUrl } } = supabase.storage
+            .from('events')
+            .getPublicUrl(fileName);
+
+          console.log(`✅ Uploaded ${storageType} image to Supabase storage`);
+          return publicUrl;
+        }
+      }
+
+      // Fallback to local URLs
+      console.log(`📱 Using local file URL${storageType === 'highlight' ? 's for highlights' : ''} (demo mode or no valid session)`);
+      return URL.createObjectURL(file);
+
+    } catch (error) {
+      console.error('Upload error:', error);
+      console.log('🔄 Cloud upload failed, falling back to local URL...');
+      return URL.createObjectURL(file);
+    }
+  };
+
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     try {
-      if (supabase) {
-        // Upload to Supabase Storage
-        const fileExt = file.name.split('.').pop();
-        const fileName = `event-${Date.now()}-${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
-        
-        const { data, error } = await supabase.storage
-          .from('booth')
-          .upload(fileName, file);
-
-        if (error) {
-          console.error('Supabase upload error:', error);
-          // Fall back to local URL
-          const fileUrl = URL.createObjectURL(file);
-          setEventData({
-            ...eventData, 
-            image: fileUrl,
-            fileName: file.name,
-            fileType: file.type,
-            fileSize: file.size
-          });
-        } else {
-          // Get public URL
-          const { data: { publicUrl } } = supabase.storage
-            .from('booth')
-            .getPublicUrl(fileName);
-
-          setEventData({
-            ...eventData, 
-            image: publicUrl,
-            fileName: file.name,
-            fileType: file.type,
-            fileSize: file.size
-          });
-        }
-      } else {
-        // No Supabase, use local URL
-        const fileUrl = URL.createObjectURL(file);
-        setEventData({
-          ...eventData, 
-          image: fileUrl,
-          fileName: file.name,
-          fileType: file.type,
-          fileSize: file.size
-        });
-      }
+      const imageUrl = await uploadToSupabase(file, '', 'single');
+      setEventData({
+        ...eventData,
+        image: imageUrl,
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: file.size
+      });
     } catch (error) {
-      console.error('Error handling image upload:', error);
-      alert('Failed to upload image');
+      alert(`Upload failed: ${error.message}`);
     }
   };
 
@@ -264,46 +323,19 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({
     if (!files || files.length === 0) return;
 
     try {
-      const uploadedPhotos: string[] = [];
-      
-      for (let i = 0; i < Math.min(files.length, 4); i++) {
-        const file = files[i];
-        
-        if (supabase) {
-          // Upload to Supabase Storage
-          const fileExt = file.name.split('.').pop();
-          const fileName = `event-highlight-${Date.now()}-${i}-${Math.random().toString(36).substr(2, 9)}.${fileExt}`;
-          
-          const { data, error } = await supabase.storage
-            .from('booth')
-            .upload(fileName, file);
-
-          if (error) {
-            console.error('Supabase upload error:', error);
-            // Fall back to local URL
-            const fileUrl = URL.createObjectURL(file);
-            uploadedPhotos.push(fileUrl);
-          } else {
-            // Get public URL
-            const { data: { publicUrl } } = supabase.storage
-              .from('booth')
-              .getPublicUrl(fileName);
-            uploadedPhotos.push(publicUrl);
-          }
-        } else {
-          // No Supabase, use local URL
-          const fileUrl = URL.createObjectURL(file);
-          uploadedPhotos.push(fileUrl);
-        }
-      }
-
-      setEventData({
-        ...eventData,
-        highlight_photos: [...(eventData.highlight_photos || []), ...uploadedPhotos]
+      const uploadPromises = Array.from(files).slice(0, 4).map(async (file, i) => {
+        return await uploadToSupabase(file, `highlights/${i}-`, 'highlight');
       });
+
+      const uploadedUrls = await Promise.all(uploadPromises);
+      setEventData(prev => ({
+        ...prev,
+        highlight_photos: [...(prev.highlight_photos || []), ...uploadedUrls]
+      }));
+
+      console.log(`📱 Created ${uploadedUrls.length} highlight image URLs`);
     } catch (error) {
-      console.error('Error handling highlight photos upload:', error);
-      alert('Failed to upload highlight photos');
+      alert(`Upload failed: ${error.message}`);
     }
   };
 
@@ -390,7 +422,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({
         <form onSubmit={handleSubmit} style={{display: 'flex', flexDirection: 'column', gap: '24px'}}>
           {/* Basic Information */}
           <div>
-            <label style={{display: 'block', fontSize: '14px', fontWeight: '600', color: '#1f2937', marginBottom: '8px'}}>
+            <label style={styles.label}>
               Event Title <span style={{color: '#ef4444'}}>*</span>
             </label>
             <input
@@ -399,19 +431,12 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({
               onChange={(e) => setEventData({...eventData, title: e.target.value})}
               placeholder="Amazing Art Workshop"
               required
-              style={{
-                width: '100%',
-                padding: '12px 16px',
-                border: '1px solid #d1d5db',
-                borderRadius: '8px',
-                fontSize: '14px',
-                backgroundColor: '#f9fafb'
-              }}
+              style={styles.input}
             />
           </div>
 
           <div>
-            <label style={{display: 'block', fontSize: '14px', fontWeight: '600', color: '#1f2937', marginBottom: '8px'}}>
+            <label style={styles.label}>
               👤 Event Organizer <span style={{color: '#ef4444'}}>*</span>
             </label>
             <input
@@ -420,19 +445,12 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({
               onChange={(e) => setEventData({...eventData, organizer_name: e.target.value})}
               placeholder="Your name or organization"
               required
-              style={{
-                width: '100%',
-                padding: '12px 16px',
-                border: '1px solid #d1d5db',
-                borderRadius: '8px',
-                fontSize: '14px',
-                backgroundColor: '#f9fafb'
-              }}
+              style={styles.input}
             />
           </div>
 
           <div>
-            <label style={{display: 'block', fontSize: '14px', fontWeight: '600', color: '#1f2937', marginBottom: '8px'}}>
+            <label style={styles.label}>
               Description
             </label>
             <textarea
@@ -440,22 +458,13 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({
               onChange={(e) => setEventData({...eventData, description: e.target.value})}
               placeholder="Describe your event and what participants can expect..."
               rows={3}
-              style={{
-                width: '100%',
-                padding: '12px 16px',
-                border: '1px solid #d1d5db',
-                borderRadius: '8px',
-                fontSize: '14px',
-                fontFamily: 'inherit',
-                backgroundColor: '#f9fafb',
-                resize: 'vertical'
-              }}
+              style={styles.textarea}
             />
           </div>
 
           {/* Location */}
           <div style={{position: 'relative'}}>
-            <label style={{display: 'block', fontSize: '14px', fontWeight: '600', color: '#1f2937', marginBottom: '8px'}}>
+            <label style={styles.label}>
               📍 Location <span style={{color: '#ef4444'}}>*</span>
             </label>
             <div style={{position: 'relative'}}>
@@ -567,12 +576,12 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({
             
             {/* Date Range */}
             <div style={{marginBottom: '16px'}}>
-              <label style={{display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '8px'}}>
+              <label style={{...styles.label, fontSize: '13px', color: '#374151'}}>
                 Event Dates
               </label>
               <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px'}}>
                 <div>
-                  <label style={{display: 'block', fontSize: '12px', fontWeight: '500', color: '#6b7280', marginBottom: '4px'}}>
+                  <label style={styles.subLabel}>
                     Start Date
                   </label>
                   <input
@@ -590,7 +599,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({
                   />
                 </div>
                 <div>
-                  <label style={{display: 'block', fontSize: '12px', fontWeight: '500', color: '#6b7280', marginBottom: '4px'}}>
+                  <label style={styles.subLabel}>
                     End Date
                   </label>
                   <input
@@ -612,12 +621,12 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({
 
             {/* Daily Hours */}
             <div>
-              <label style={{display: 'block', fontSize: '13px', fontWeight: '600', color: '#374151', marginBottom: '8px'}}>
+              <label style={{...styles.label, fontSize: '13px', color: '#374151'}}>
                 Daily Event Hours
               </label>
               <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px'}}>
                 <div>
-                  <label style={{display: 'block', fontSize: '12px', fontWeight: '500', color: '#6b7280', marginBottom: '4px'}}>
+                  <label style={styles.subLabel}>
                     Starts At
                   </label>
                   <input
@@ -635,7 +644,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({
                   />
                 </div>
                 <div>
-                  <label style={{display: 'block', fontSize: '12px', fontWeight: '500', color: '#6b7280', marginBottom: '4px'}}>
+                  <label style={styles.subLabel}>
                     Ends At
                   </label>
                   <input
@@ -659,7 +668,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({
           {/* Event Type and Details */}
           <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px'}}>
             <div>
-              <label style={{display: 'block', fontSize: '14px', fontWeight: '600', color: '#1f2937', marginBottom: '8px'}}>
+              <label style={styles.label}>
                 Event Type
               </label>
               <select 
@@ -681,7 +690,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({
               </select>
             </div>
             <div>
-              <label style={{display: 'block', fontSize: '14px', fontWeight: '600', color: '#1f2937', marginBottom: '8px'}}>
+              <label style={styles.label}>
                 👥 Max Attendees
               </label>
               <input
@@ -704,7 +713,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({
 
           {/* Price */}
           <div>
-            <label style={{display: 'block', fontSize: '14px', fontWeight: '600', color: '#1f2937', marginBottom: '8px'}}>
+            <label style={styles.label}>
               💰 Event Price
             </label>
             <input
@@ -713,21 +722,14 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({
               onChange={(e) => setEventData({...eventData, price: parseInt(e.target.value) || 0})}
               min="0"
               placeholder="0"
-              style={{
-                width: '100%',
-                padding: '12px 16px',
-                border: '1px solid #d1d5db',
-                borderRadius: '8px',
-                fontSize: '14px',
-                backgroundColor: '#f9fafb'
-              }}
+              style={styles.input}
             />
             <p style={{fontSize: '12px', color: '#6b7280', margin: '4px 0 0 0'}}>Enter 0 for free events</p>
           </div>
 
           {/* Event Image */}
           <div>
-            <label style={{display: 'block', fontSize: '14px', fontWeight: '600', color: '#1f2937', marginBottom: '8px'}}>
+            <label style={styles.label}>
               Event Image
             </label>
             <label style={{
@@ -775,7 +777,7 @@ const CreateEventModal: React.FC<CreateEventModalProps> = ({
 
           {/* Highlight Photos Upload */}
           <div>
-            <label style={{display: 'block', fontSize: '14px', fontWeight: '600', color: '#1f2937', marginBottom: '8px'}}>
+            <label style={styles.label}>
               ✨ Event Highlights (up to 4 photos)
             </label>
             <p style={{fontSize: '12px', color: '#6b7280', marginBottom: '12px', margin: '0 0 12px 0'}}>

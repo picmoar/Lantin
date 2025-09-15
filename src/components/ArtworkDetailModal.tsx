@@ -126,7 +126,7 @@ const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
         }}>
           <div style={{
             width: '100%',
-            height: '300px',
+            height: '250px',
             overflow: 'hidden',
             position: 'relative'
           }}>
@@ -371,7 +371,11 @@ const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
             padding: '16px 20px',
             borderTop: '1px solid #e5e7eb',
             display: 'flex',
-            gap: '12px'
+            gap: '12px',
+            position: 'relative',
+            zIndex: 3000,
+            backgroundColor: 'white',
+            flexShrink: 0
           }}>
             {onEdit && (
               <button
@@ -385,7 +389,9 @@ const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
                   borderRadius: '8px',
                   fontSize: '14px',
                   fontWeight: '600',
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  position: 'relative',
+                  zIndex: 3001
                 }}
               >
                 Edit
@@ -403,7 +409,9 @@ const ArtworkDetailModal: React.FC<ArtworkDetailModalProps> = ({
                   borderRadius: '8px',
                   fontSize: '14px',
                   fontWeight: '600',
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  position: 'relative',
+                  zIndex: 3001
                 }}
               >
                 Delete

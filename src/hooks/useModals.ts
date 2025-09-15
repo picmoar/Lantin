@@ -8,6 +8,8 @@ export function useModals() {
   const [showFavoritesModal, setShowFavoritesModal] = useState(false);
   const [showFullImageModal, setShowFullImageModal] = useState(false);
   const [showEditBoothModal, setShowEditBoothModal] = useState(false);
+  const [showEditEventModal, setShowEditEventModal] = useState(false);
+  const [showEditArtworkModal, setShowEditArtworkModal] = useState(false);
   const [selectedArtwork, setSelectedArtwork] = useState(null);
   const [selectedBooth, setSelectedBooth] = useState(null);
   const [selectedEvent, setSelectedEvent] = useState(null);
@@ -39,7 +41,13 @@ export function useModals() {
   
   const openEditBoothModal = () => setShowEditBoothModal(true);
   const closeEditBoothModal = () => setShowEditBoothModal(false);
-  
+
+  const openEditEventModal = () => setShowEditEventModal(true);
+  const closeEditEventModal = () => setShowEditEventModal(false);
+
+  const openEditArtworkModal = () => setShowEditArtworkModal(true);
+  const closeEditArtworkModal = () => setShowEditArtworkModal(false);
+
   const openArtworkDetail = (artwork) => setSelectedArtwork(artwork);
   const closeArtworkDetail = () => setSelectedArtwork(null);
   
@@ -58,6 +66,8 @@ export function useModals() {
     showFavoritesModal,
     showFullImageModal,
     showEditBoothModal,
+    showEditEventModal,
+    showEditArtworkModal,
     selectedArtwork,
     selectedBooth,
     selectedEvent,
@@ -78,6 +88,10 @@ export function useModals() {
     closeFullImageModal,
     openEditBoothModal,
     closeEditBoothModal,
+    openEditEventModal,
+    closeEditEventModal,
+    openEditArtworkModal,
+    closeEditArtworkModal,
     openArtworkDetail,
     closeArtworkDetail,
     openBoothDetail,

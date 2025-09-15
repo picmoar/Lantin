@@ -12,32 +12,65 @@ export function useUserContent(user, userProfile) {
 
 
   const loadUserContent = async () => {
-    const sampleArtworks = generateSampleArtworks(userProfile.name || 'Demo Artist');
-    
     if (!supabase || !user) {
-      setUserArtworks(sampleArtworks);
+      console.log('🎨 loadUserContent: No supabase or user, setting empty artworks');
+      setUserArtworks([]); // Start with empty array for new users
       return;
     }
 
     try {
+      console.log('🎨 loadUserContent: Querying artworks for user ID:', user.id);
+      console.log('🎨 loadUserContent: User object:', user);
+
+      // Query user's artworks (without the problematic artwork_photos join for now)
       const { data: artworks, error: artworksError } = await supabase
         .from('artworks')
-        .select(`
-          *,
-          artwork_photos(image_url, is_primary)
-        `)
+        .select('*')
         .eq('artist_id', user?.id)
         .order('created_at', { ascending: false });
 
-      if (!artworksError && artworks) {
-        console.log('Loaded user artworks:', artworks);
-        
+      console.log('🎨 loadUserContent: Specific query completed. Error:', artworksError);
+      console.log('🎨 loadUserContent: Specific query data received:', artworks);
+
+      if (artworksError) {
+        console.warn('Artworks table not available or error:', artworksError);
+        setUserArtworks([]); // Set empty array when table doesn't exist
+      } else if (artworks) {
+        console.log('🎨 Loaded user artworks from database:', artworks.length, 'artworks');
+        console.log('🎨 Raw artwork data:', artworks);
+
         const transformedArtworks = artworks.map(artwork => {
-          const photos = artwork.artwork_photos?.map(photo => ({
-            id: `photo-${photo.image_url}`,
-            url: photo.image_url
-          })) || [];
-          
+          // Parse images from the image field (could be JSON string or single URL)
+          let photos;
+          if (artwork.image) {
+            try {
+              // Try parsing as JSON array first (multi-image format)
+              const parsedImages = JSON.parse(artwork.image);
+              if (Array.isArray(parsedImages) && parsedImages.length > 0) {
+                photos = parsedImages.map((imageUrl, index) => ({
+                  id: `artwork-${artwork.id}-${index}`,
+                  url: imageUrl
+                }));
+              } else {
+                throw new Error('Not an array');
+              }
+            } catch {
+              // If parsing fails, treat as single image URL
+              photos = [{
+                id: `artwork-${artwork.id}`,
+                url: artwork.image
+              }];
+            }
+          } else {
+            // Fallback placeholder
+            photos = [{
+              id: 'placeholder',
+              url: 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=600&h=800&fit=crop'
+            }];
+          }
+
+          console.log('🖼️ Transforming artwork:', artwork.title, 'with image:', artwork.image);
+
           return {
             id: artwork.id,
             title: artwork.title,
@@ -47,18 +80,19 @@ export function useUserContent(user, userProfile) {
             medium: artwork.medium,
             dimensions: artwork.dimensions,
             year: artwork.year,
-            photos: photos.length > 0 ? photos : [{ 
-              id: 'placeholder', 
-              url: 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=600&h=800&fit=crop' 
-            }],
+            photos: photos,
             tags: [],
             createdAt: artwork.created_at,
             is_for_sale: artwork.is_for_sale
           };
         });
-        
-        const allArtworks = [...transformedArtworks, ...sampleArtworks];
-        setUserArtworks(allArtworks);
+
+        // Only show user's actual artworks, no sample data in personal collection
+        console.log('🎨 Setting userArtworks state with:', transformedArtworks.length, 'transformed artworks');
+        console.log('🎨 Transformed artwork data:', transformedArtworks);
+        setUserArtworks(transformedArtworks);
+      } else {
+        setUserArtworks([]);
       }
     } catch (error) {
       console.error('Error loading user content:', error);
@@ -244,6 +278,10 @@ export function useUserContent(user, userProfile) {
         console.log('Artist upsert warning:', artistError);
       }
 
+      // Store all images as JSON array (CreateArtworkModal sends images array)
+      const allImages = artworkData.images && artworkData.images.length > 0 ? artworkData.images : [artworkData.image].filter(Boolean);
+      const firstImage = allImages[0]; // For backward compatibility
+
       const { data, error } = await supabase
         .from('artworks')
         .insert([
@@ -256,6 +294,7 @@ export function useUserContent(user, userProfile) {
             dimensions: artworkData.dimensions,
             price: artworkData.price,
             is_for_sale: artworkData.price !== null && artworkData.price > 0,
+            image: allImages.length > 1 ? JSON.stringify(allImages) : firstImage, // Store multiple images as JSON string or single image
             tags: [artworkData.type || 'art']
           }
         ])
@@ -264,27 +303,16 @@ export function useUserContent(user, userProfile) {
 
       if (error) throw error;
 
-      let imageUrl = null;
-      if (artworkData.image) {
-        const { data: photoData, error: photoError } = await supabase
-          .from('artwork_photos')
-          .insert([
-            {
-              artwork_id: data.id,
-              image_url: artworkData.image,
-              is_primary: true,
-              order_index: 0
-            }
-          ])
-          .select()
-          .single();
-
-        if (photoError) {
-          console.error('Error saving artwork photo:', photoError);
-        } else {
-          imageUrl = artworkData.image;
-        }
-      }
+      // Create photos array from all images
+      const photos = allImages && allImages.length > 0
+        ? allImages.map((imageUrl, index) => ({
+            id: `artwork-${data.id}-${index}`,
+            url: imageUrl
+          }))
+        : [{
+            id: 'placeholder',
+            url: 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=600&h=800&fit=crop'
+          }];
 
       const newArtwork = {
         id: data.id,
@@ -295,18 +323,103 @@ export function useUserContent(user, userProfile) {
         dimensions: data.dimensions,
         year: data.year,
         artist: userProfile.name,
-        image: imageUrl,
+        image: firstImage,
+        photos: photos,
+        tags: [],
         createdAt: data.created_at,
+        is_for_sale: data.is_for_sale,
         sales: 0
       };
       
-      setUserArtworks([newArtwork, ...userArtworks]);
-      await loadUserContent();
+      console.log('🎨 Adding new artwork to state:', newArtwork);
+      console.log('🎨 Current userArtworks before update:', userArtworks.length);
+
+      // Just update state directly, don't call loadUserContent to avoid race conditions
+      setUserArtworks(prevArtworks => [newArtwork, ...prevArtworks]);
+      console.log('🎨 Artwork creation completed');
       alert('🎨 Artwork published successfully!');
       return true;
     } catch (error) {
       console.error('Error creating artwork:', error);
       alert('Failed to create artwork: ' + error.message);
+      return false;
+    }
+  };
+
+  const updateArtwork = async (artworkId, artworkData) => {
+    if (!supabase || !user) {
+      alert('Please log in to update artwork');
+      return false;
+    }
+
+    try {
+      // Store all images as JSON array (CreateArtworkModal sends images array)
+      const allImages = artworkData.images && artworkData.images.length > 0 ? artworkData.images : [artworkData.image].filter(Boolean);
+      const firstImage = allImages[0]; // For backward compatibility
+
+      const { data, error } = await supabase
+        .from('artworks')
+        .update({
+          title: artworkData.title,
+          description: artworkData.description,
+          medium: artworkData.medium,
+          year: artworkData.year,
+          dimensions: artworkData.dimensions,
+          price: artworkData.price,
+          is_for_sale: artworkData.price !== null && artworkData.price > 0,
+          image: allImages.length > 1 ? JSON.stringify(allImages) : firstImage, // Store multiple images as JSON string or single image
+          tags: [artworkData.type || 'art']
+        })
+        .eq('id', artworkId)
+        .eq('artist_id', user?.id) // Ensure user can only update their own artworks
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Create photos array from all images
+      const photos = allImages && allImages.length > 0
+        ? allImages.map((imageUrl, index) => ({
+            id: `artwork-${data.id}-${index}`,
+            url: imageUrl
+          }))
+        : [{
+            id: 'placeholder',
+            url: 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=600&h=800&fit=crop'
+          }];
+
+      const updatedArtwork = {
+        id: data.id,
+        title: data.title,
+        description: data.description,
+        price: data.price,
+        medium: data.medium,
+        dimensions: data.dimensions,
+        year: data.year,
+        artist: userProfile.name,
+        image: firstImage,
+        photos: photos,
+        tags: [],
+        createdAt: data.created_at,
+        is_for_sale: data.is_for_sale,
+        sales: 0
+      };
+
+      console.log('🎨 Updating artwork in state:', updatedArtwork);
+
+      // Update the artwork in state
+      setUserArtworks(prevArtworks =>
+        prevArtworks.map(artwork =>
+          artwork.id === artworkId ? updatedArtwork : artwork
+        )
+      );
+
+      console.log('🎨 Artwork update completed');
+      alert('🎨 Artwork updated successfully!');
+      return true;
+    } catch (error) {
+      console.error('Error updating artwork:', error);
+      alert('Failed to update artwork: ' + error.message);
       return false;
     }
   };
@@ -318,6 +431,9 @@ export function useUserContent(user, userProfile) {
     }
 
     try {
+      console.log('🏪 Starting booth creation...');
+      console.log('🏪 User:', user?.id);
+      console.log('🏪 Booth data:', boothData);
       // Try to create booth with image first
       let insertData = {
         artist_id: user?.id,
@@ -340,44 +456,33 @@ export function useUserContent(user, userProfile) {
         insertData.image = boothData.image;
       }
 
+      console.log('🏪 Inserting booth data:', insertData);
       const { data, error } = await supabase
         .from('booths')
         .insert([insertData])
         .select()
         .single();
 
-      if (error) throw error;
+      console.log('🏪 Database response:', { data, error });
+      if (error) {
+        console.error('🏪 Database error:', error);
+        throw error;
+      }
 
       const newBooth = {
         ...data,
         visitors: 127,
+        artist: data.operator_name || 'Artist',
         image: boothData.image // Store image locally in state even if not in DB
       };
       console.log('Created booth with image:', newBooth);
+
+      // Update both userBooth (single) and userBooths (array) states immediately
       setUserBooth(newBooth);
+      setUserBooths(prev => [newBooth, ...prev]);
 
-      const { data: allBoothsData, error: allBoothsError } = await supabase
-        .from('booths')
-        .select('*')
-        .order('created_at', { ascending: false });
-      
-      if (allBoothsData && !allBoothsError) {
-        // Load saved images from localStorage
-        let savedImages = {};
-        try {
-          savedImages = JSON.parse(localStorage.getItem('booth-images') || '{}');
-        } catch (e) {
-          console.error('Failed to load images from localStorage:', e);
-        }
-
-        const updatedBooths = allBoothsData.map(booth => ({
-          ...booth,
-          artist: booth.description || 'Artist',
-          image: booth.image || savedImages[booth.id] || 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=300&h=200&fit=crop'
-        }));
-        console.log('Updated all booths:', updatedBooths);
-        setAllBooths(updatedBooths);
-      }
+      // Update allBooths state immediately without refetching
+      setAllBooths(prev => [newBooth, ...prev]);
 
       alert('Booth created successfully!');
       return true;
@@ -391,9 +496,10 @@ export function useUserContent(user, userProfile) {
   const updateBooth = async (updatedBoothData) => {
     if (!supabase || !user || !userBooth) {
       alert('Please log in to update booth');
-      return;
+      return false;
     }
 
+    console.log('🔄 Starting booth update...');
     try {
       let updateData = {
         name: updatedBoothData.name,
@@ -415,13 +521,19 @@ export function useUserContent(user, userProfile) {
         updateData.image = updatedBoothData.image;
       }
 
+      console.log('🔄 Updating booth in Supabase...', { userBoothId: userBooth.id, userId: user?.id });
       const { error } = await supabase
         .from('booths')
         .update(updateData)
         .eq('id', userBooth.id)
         .eq('artist_id', user?.id);
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Supabase update error:', error);
+        throw error;
+      }
+
+      console.log('✅ Supabase update successful');
 
       setUserBooth({
         ...userBooth,
@@ -449,28 +561,38 @@ export function useUserContent(user, userProfile) {
       return;
     }
 
+    console.log('🗑️ Deleting artwork:', artworkId, 'for user:', user.id);
+
     const confirmed = confirm('Are you sure you want to delete this artwork? This action cannot be undone.');
     if (!confirmed) return;
 
     try {
+      // Try to delete photos first (may not exist, that's ok)
+      console.log('🗑️ Deleting artwork photos...');
       const { error: photoError } = await supabase
         .from('artwork_photos')
         .delete()
         .eq('artwork_id', artworkId);
 
       if (photoError) {
-        console.error('Error deleting artwork photos:', photoError);
+        console.warn('Warning deleting artwork photos (may not exist):', photoError);
       }
 
+      // Delete the artwork itself
+      console.log('🗑️ Deleting artwork record...');
       const { error: artworkError } = await supabase
         .from('artworks')
         .delete()
         .eq('id', artworkId)
         .eq('artist_id', user?.id);
 
+      console.log('🗑️ Delete result:', artworkError);
+
       if (artworkError) throw artworkError;
 
-      setUserArtworks(userArtworks.filter(artwork => artwork.id !== artworkId));
+      // Update state
+      setUserArtworks(prevArtworks => prevArtworks.filter(artwork => artwork.id !== artworkId));
+      console.log('🗑️ Artwork deleted successfully');
       alert('✅ Artwork deleted successfully');
     } catch (error) {
       console.error('Error deleting artwork:', error);
@@ -511,14 +633,14 @@ export function useUserContent(user, userProfile) {
   // Load user content when user changes
   useEffect(() => {
     loadUserContent();
-  }, [supabase, user]);
+  }, [supabase, user, userProfile]);
 
   // Load events data - copy booth pattern exactly
   useEffect(() => {
     const loadEvents = async () => {
       if (!supabase) return;
       
-      console.log('useUserContent loadEvents called with user:', user);
+      // console.log('useUserContent loadEvents called with user:', user);
       
       const { data, error } = await supabase
         .from('events')
@@ -526,15 +648,19 @@ export function useUserContent(user, userProfile) {
         .order('created_at', { ascending: false });
       
       console.log('Loading all events result:', { data, error });
-      
-      if (data && !error) {
+
+      if (error) {
+        console.warn('Events table not available or error:', error);
+        setAllEvents([]);
+        setUserEvents([]);
+      } else if (data) {
         const mappedEvents = data.map(event => ({
           ...event,
           organizer: event.organizer_name || 'Unknown Organizer',
           attendees: event.attendee_count || 0,
           image: event.image || 'https://images.unsplash.com/photo-1569982175971-d92b01cf8694?w=300&h=150&fit=crop'
         }));
-        console.log('Mapped all events:', mappedEvents);
+        // console.log('Mapped all events:', mappedEvents);
         setAllEvents(mappedEvents);
       }
       
@@ -564,7 +690,7 @@ export function useUserContent(user, userProfile) {
     const loadBooths = async () => {
       if (!supabase) return;
       
-      console.log('useUserContent loadBooths called with user:', user);
+      // console.log('useUserContent loadBooths called with user:', user);
       
       const { data, error } = await supabase
         .from('booths')
@@ -572,14 +698,22 @@ export function useUserContent(user, userProfile) {
         .order('created_at', { ascending: false });
       
       console.log('Loading all booths result:', { data, error });
-      
-      if (data && !error) {
-        const mappedBooths = data.map(booth => ({
-          ...booth,
-          artist: booth.description || 'Artist',
-          image: booth.image || 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=300&h=200&fit=crop'
-        }));
-        console.log('Mapped all booths:', mappedBooths);
+
+      if (error) {
+        console.warn('Booths table not available or error:', error);
+        setAllBooths([]);
+        setUserBooths([]);
+        setUserBooth(null);
+      } else if (data) {
+        const mappedBooths = data.map(booth => {
+          console.log('🏪 Mapping booth:', booth.name, 'image:', booth.image);
+          return {
+            ...booth,
+            artist: booth.operator_name || booth.description || 'Artist',
+            image: booth.image || 'https://images.unsplash.com/photo-1541961017774-22349e4a1262?w=300&h=200&fit=crop'
+          };
+        });
+        console.log('🏪 Mapped all booths:', mappedBooths);
         setAllBooths(mappedBooths);
       }
       
@@ -609,6 +743,9 @@ export function useUserContent(user, userProfile) {
     loadBooths();
   }, [supabase, user]);
 
+  // Debug current state when needed
+  // console.log('🔄 useUserContent returning userArtworks:', userArtworks.length, 'items');
+
   return {
     userEvents,
     allEvents,
@@ -620,6 +757,7 @@ export function useUserContent(user, userProfile) {
     updateEvent,
     deleteEvent,
     createArtwork,
+    updateArtwork,
     createBooth,
     updateBooth,
     deleteArtwork,

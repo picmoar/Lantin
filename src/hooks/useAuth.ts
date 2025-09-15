@@ -11,18 +11,140 @@ export function useAuth() {
     profileImage: ''
   });
 
+  // Restore session from localStorage on initialization
+  const restoreSession = () => {
+    try {
+      // Only restore demo users from localStorage
+      // Real users will be restored by Supabase session
+      const savedUser = localStorage.getItem('lantin-demo-user');
+      const savedProfile = localStorage.getItem('lantin-demo-profile');
+      
+      if (savedUser && savedProfile) {
+        const parsedUser = JSON.parse(savedUser);
+        const parsedProfile = JSON.parse(savedProfile);
+        
+        console.log('🔄 Restoring demo session from localStorage:', parsedUser.email);
+        setUser(parsedUser);
+        setUserProfile(parsedProfile);
+        return true;
+      }
+    } catch (error) {
+      console.error('❌ Error restoring session:', error);
+      // Clear corrupted data
+      localStorage.removeItem('lantin-demo-user');
+      localStorage.removeItem('lantin-demo-profile');
+    }
+    return false;
+  };
+
   const updateProfile = (updates) => {
-    setUserProfile(prev => ({ ...prev, ...updates }));
+    const newProfile = { ...userProfile, ...updates };
+    setUserProfile(newProfile);
+    
+    // Also update localStorage if user exists
+    if (user) {
+      localStorage.setItem('lantin-demo-profile', JSON.stringify(newProfile));
+    }
+  };
+
+  const loadUserProfileFromDatabase = async (authUser: any) => {
+    try {
+      console.log('🔍 Loading user profile from database for:', authUser.email);
+      console.log('🔍 Supabase available:', !!supabase);
+      console.log('🔍 Auth user ID:', authUser.id);
+
+      if (supabase && authUser.email && authUser.email !== 'test@mobile.com') {
+        // Try to load from database first
+        console.log('📡 Querying artists table for email:', authUser.email);
+        const { data: artistRecord, error } = await supabase
+          .from('artists')
+          .select('*')
+          .eq('email', authUser.email)
+          .single();
+
+        console.log('📊 Database query result:', { artistRecord, error });
+
+        if (error && error.code === 'PGRST116') {
+          // Artist doesn't exist, create a new record with defaults
+          console.log('📝 Creating new artist record for:', authUser.email);
+
+          const newArtistData = {
+            id: authUser.id,
+            email: authUser.email,
+            name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'Artist',
+            bio: 'Passionate about creating and sharing amazing art.',
+            location: 'Art Studio',
+            created_at: new Date().toISOString()
+          };
+
+          const { data: newArtist, error: createError } = await supabase
+            .from('artists')
+            .insert([newArtistData])
+            .select()
+            .single();
+
+          if (createError) {
+            console.error('❌ Failed to create artist record:', createError);
+            // Use fallback profile
+          } else if (newArtist) {
+            console.log('✅ Created new artist record:', newArtist);
+            const newProfile = {
+              name: newArtist.name || 'Artist',
+              bio: newArtist.bio || 'Passionate about creating and sharing amazing art.',
+              location: newArtist.location || 'Art Studio',
+              specialty: newArtist.specialty || 'Art Enthusiast',
+              profileImage: newArtist.profile_image_url || `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop&crop=face`
+            };
+            console.log('🔄 Setting new profile:', newProfile);
+            setUserProfile(newProfile);
+            return;
+          }
+        } else if (!error && artistRecord) {
+          console.log('✅ Loaded existing profile from database:', artistRecord);
+          const existingProfile = {
+            name: artistRecord.name || authUser.email?.split('@')[0] || 'Artist',
+            bio: artistRecord.bio || 'Passionate about creating and sharing amazing art.',
+            location: artistRecord.location || 'Art Studio',
+            specialty: artistRecord.specialty || 'Art Enthusiast',
+            profileImage: artistRecord.profile_image_url || `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop&crop=face`
+          };
+          console.log('🔄 Setting existing profile:', existingProfile);
+          setUserProfile(existingProfile);
+          return;
+        } else {
+          console.error('❌ Unexpected database error:', error);
+        }
+      }
+
+      // Fallback to defaults if database operations failed or demo user
+      console.log('📱 Using fallback profile values');
+      setUserProfile({
+        name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'Art Lover',
+        bio: authUser.user_metadata?.bio || 'Passionate about discovering amazing art and connecting with talented artists.',
+        location: authUser.user_metadata?.location || 'New York, NY',
+        specialty: authUser.user_metadata?.specialty || 'Art Enthusiast',
+        profileImage: authUser.user_metadata?.avatar_url || `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop&crop=face`
+      });
+
+    } catch (error) {
+      console.error('❌ Error loading user profile:', error);
+      // Final fallback to defaults on error
+      setUserProfile({
+        name: authUser.user_metadata?.full_name || authUser.email?.split('@')[0] || 'Art Lover',
+        bio: authUser.user_metadata?.bio || 'Passionate about discovering amazing art and connecting with talented artists.',
+        location: authUser.user_metadata?.location || 'New York, NY',
+        specialty: authUser.user_metadata?.specialty || 'Art Enthusiast',
+        profileImage: authUser.user_metadata?.avatar_url || `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop&crop=face`
+      });
+    }
   };
 
   const handleLogin = async () => {
     if (supabase) {
       try {
         const { error } = await supabase.auth.signInWithOAuth({
-          provider: 'google',
-          options: {
-            redirectTo: window.location.origin
-          }
+          provider: 'google'
+          // No redirectTo options to avoid interfering with OTP
         });
         
         if (error) {
@@ -45,6 +167,103 @@ export function useAuth() {
     return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
   };
 
+  // Send 6-digit email verification code
+  const sendEmailCode = async (email: string) => {
+    if (!supabase) {
+      console.log('No Supabase, using demo login');
+      handleMobileTestLogin();
+      return false;
+    }
+
+    try {
+      console.log('Sending 6-digit code to:', email);
+      
+      // Use Supabase signInWithOtp with explicit OTP channel
+      const { data, error } = await supabase.auth.signInWithOtp({
+        email: email.trim().toLowerCase(),
+        options: {
+          shouldCreateUser: true, // Allow automatic user creation for OTP
+          emailRedirectTo: undefined, // Explicitly disable redirect URLs
+          data: {
+            // Force OTP token instead of magic link
+            confirmation_sent_at: new Date().toISOString()
+          }
+        }
+      });
+      
+      console.log('🔍 Supabase OTP response:', { data, error });
+      
+      if (error) {
+        console.error('OTP error details:', error);
+        throw error;
+      }
+      
+      console.log('✅ 6-digit code sent successfully');
+      return true;
+    } catch (error) {
+      console.error('❌ Email code error:', error);
+      throw error;
+    }
+  };
+
+  // Handle 6-digit email OTP verification
+  const handleEmailOtpLogin = async (email: string, otp: string) => {
+    if (!supabase) {
+      console.log('No Supabase, using demo login');
+      handleMobileTestLogin();
+      return false;
+    }
+
+    try {
+      console.log('Verifying OTP for:', email);
+      
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: email,
+        token: otp,
+        type: 'email'
+      });
+
+      if (error) throw error;
+      
+      if (data.session) {
+        console.log('✅ OTP verification successful:', data.session.user.email);
+        
+        // Create or update user in artists table
+        try {
+          const { error: upsertError } = await supabase
+            .from('artists')
+            .upsert({
+              id: data.session.user.id,
+              email: data.session.user.email,
+              name: data.session.user.user_metadata?.full_name || 'Artist',
+              bio: 'Passionate about creating and sharing amazing art.',
+              created_at: new Date().toISOString()
+            }, {
+              onConflict: 'email'
+            });
+          
+          if (upsertError) {
+            console.warn('Failed to create/update artist record:', upsertError);
+          } else {
+            console.log('✅ Artist record created/updated');
+          }
+        } catch (artistError) {
+          console.warn('Artist table sync failed:', artistError);
+        }
+        
+        setUser(data.session.user);
+        // Load the profile data after successful login
+        await loadUserProfileFromDatabase(data.session.user);
+        return true;
+      } else {
+        throw new Error('No session created after OTP verification');
+      }
+    } catch (error) {
+      console.error('OTP verification error:', error);
+      throw error;
+    }
+  };
+
   const handleGoogleLogin = async () => {
     console.log('Google login clicked');
     try {
@@ -52,8 +271,7 @@ export function useAuth() {
       const authOptions = {
         provider: 'google',
         options: {
-          redirectTo: `${window.location.origin}`,
-          // Force redirect mode on mobile to avoid popup issues
+          // No redirectTo to avoid interfering with OTP behavior
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',
@@ -83,6 +301,8 @@ export function useAuth() {
     }
   };
 
+
+
   const handleMobileTestLogin = () => {
     console.log('Demo login clicked');
     
@@ -96,181 +316,270 @@ export function useAuth() {
       }
     };
     
-    console.log('Setting user:', mockUser);
-    setUser(mockUser);
-    setUserProfile({
+    const mockProfile = {
       name: mockUser.user_metadata.full_name,
       bio: mockUser.user_metadata.bio,
       location: 'Mobile Device',
       specialty: 'Art Enthusiast',
       profileImage: mockUser.user_metadata.avatar_url
-    });
+    };
     
-    console.log('Login state updated');
+    // Store in localStorage for persistence
+    localStorage.setItem('lantin-demo-user', JSON.stringify(mockUser));
+    localStorage.setItem('lantin-demo-profile', JSON.stringify(mockProfile));
+    
+    console.log('Setting user:', mockUser);
+    setUser(mockUser);
+    setUserProfile(mockProfile);
+    
+    console.log('Login state updated and persisted');
     alert('Demo login successful! You can now create booths and events.');
   };
 
   const handleProfileUpdate = async () => {
-    if (supabase && user) {
-      try {
-        // Update both auth metadata and users table
-        const { error: authError } = await supabase.auth.updateUser({
-          data: {
-            full_name: userProfile.name,
-            bio: userProfile.bio,
-            location: userProfile.location,
-            specialty: userProfile.specialty
-          }
-        });
+    if (!user) {
+      alert('Please log in to update your profile');
+      return;
+    }
 
-        // Update users table
-        const { error: userError } = await supabase
-          .from('users')
-          .update({
-            name: userProfile.name,
-            location: userProfile.location,
-            profile_image_url: userProfile.profileImage
-          })
-          .eq('id', user.id);
+    console.log('🔧 Profile update debug info:');
+    console.log('User:', user);
+    console.log('User email:', user.email);
+    console.log('Supabase exists:', !!supabase);
+    console.log('Is real user?:', user.email && user.email !== 'test@mobile.com');
+
+    try {
+      if (supabase && user.email && user.email !== 'test@mobile.com') {
+        // Real authenticated user with Supabase session
+        const updateData = {
+          name: userProfile.name,
+          bio: userProfile.bio,
+          location: userProfile.location,
+          specialty: userProfile.specialty,
+          profile_image_url: userProfile.profileImage
+        };
         
-        if (authError || userError) {
-          console.error('Profile update error:', authError || userError);
-          alert('Failed to update profile: ' + (authError?.message || userError?.message));
-        } else {
-          console.log('Profile updated successfully');
-          alert('Profile updated successfully!');
+        console.log('🔧 Updating database with:', updateData);
+        console.log('🔧 User email for query:', user.email);
+        
+        // Update artists table
+        const { data, error: artistError } = await supabase
+          .from('artists')
+          .update(updateData)
+          .eq('email', user.email)
+          .select();
+        
+        console.log('🔧 Database response:', { data, error: artistError });
+        
+        if (artistError) {
+          console.error('Artists table update failed:', artistError);
+          throw new Error('Failed to sync profile to database: ' + artistError.message);
         }
-      } catch (error) {
-        console.error('Profile update error:', error);
-        alert('Failed to update profile: ' + error.message);
+        
+        if (data && data.length > 0) {
+          console.log('✅ Profile updated in database successfully!');
+          console.log('📝 Updated record:', data[0]);
+          console.log('📊 Record details:');
+          console.log('  - ID:', data[0].id);
+          console.log('  - Name:', data[0].name);
+          console.log('  - Bio:', data[0].bio);
+          console.log('  - Location:', data[0].location);
+          console.log('  - Email:', data[0].email);
+          
+          // Verify the update by querying the record again
+          console.log('🔍 Verifying update by re-querying database...');
+          const { data: verifyData, error: verifyError } = await supabase
+            .from('artists')
+            .select('*')
+            .eq('email', user.email)
+            .single();
+          
+          if (verifyError) {
+            console.error('❌ Failed to verify update:', verifyError);
+          } else {
+            console.log('✅ Verification successful - current database record:');
+            console.log('  - Name:', verifyData.name);
+            console.log('  - Bio:', verifyData.bio);
+            console.log('  - Location:', verifyData.location);
+          }
+        } else {
+          console.warn('⚠️ No records were updated - this might mean the email query didn\'t match any existing records');
+          
+          // Check if there's actually a record with this email
+          console.log('🔍 Checking if artist record exists for email:', user.email);
+          const { data: checkData, error: checkError } = await supabase
+            .from('artists')
+            .select('*')
+            .eq('email', user.email);
+          
+          if (checkError) {
+            console.error('❌ Failed to check for existing record:', checkError);
+          } else {
+            console.log('📋 Existing records found:', checkData.length);
+            if (checkData.length > 0) {
+              console.log('📝 Existing record:', checkData[0]);
+            }
+          }
+        }
+        localStorage.setItem('lantin-demo-profile', JSON.stringify(userProfile));
+        alert('Profile updated successfully in database!');
+      } else {
+        // Demo user - localStorage only
+        localStorage.setItem('lantin-demo-profile', JSON.stringify(userProfile));
+        console.log('📱 Demo mode: Profile saved to localStorage');
+        alert('Profile updated successfully (demo mode)!');
       }
+    } catch (error) {
+      console.error('Profile update error:', error);
+      alert('Failed to update profile: ' + error.message);
     }
   };
 
-  const handleProfileImageUpload = (event) => {
+  const handleProfileImageUpload = async (event) => {
     const file = event.target.files[0];
-    if (file) {
+    if (!file) return;
+
+    try {
+      // Check if we have Supabase and a valid session
+      if (supabase && user?.id) {
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+
+        if (session && session.user) {
+          console.log('📤 Uploading profile image to Supabase storage...');
+
+          // Create unique filename for profile image
+          const fileExt = file.name.split('.').pop();
+          const fileName = `profiles/${session.user.id}/${Date.now()}-profile.${fileExt}`;
+
+          // Upload to Supabase storage
+          const { data, error } = await supabase.storage
+            .from('artist-profiles')
+            .upload(fileName, file);
+
+          if (error) {
+            console.error('Profile image upload error:', error);
+            throw new Error(`Failed to upload profile image: ${error.message}`);
+          }
+
+          // Get public URL
+          const { data: { publicUrl } } = supabase.storage
+            .from('artist-profiles')
+            .getPublicUrl(fileName);
+
+          console.log('✅ Profile image uploaded successfully:', publicUrl);
+          updateProfile({ profileImage: publicUrl });
+          return;
+        }
+      }
+
+      // Fallback to local URL (demo user or no session)
+      console.log('📱 Using local file URL for profile image (demo mode)');
       const imageUrl = URL.createObjectURL(file);
       updateProfile({ profileImage: imageUrl });
+
+    } catch (error) {
+      console.error('Profile image upload error:', error);
+
+      // Fallback to local URL on error
+      console.log('🔄 Cloud upload failed, falling back to local URL...');
+      const imageUrl = URL.createObjectURL(file);
+      updateProfile({ profileImage: imageUrl });
+
+      alert(`Cloud upload failed, using local image instead. Error: ${error.message}`);
     }
   };
 
-  const signOut = () => supabase.auth.signOut();
+  const signOut = async () => {
+    console.log('Signing out...');
 
-  // Auth state management
+    // Clear demo user localStorage
+    localStorage.removeItem('lantin-demo-user');
+    localStorage.removeItem('lantin-demo-profile');
+
+    setUser(null);
+    // Don't clear profile immediately - let auth state change handle it
+
+    if (supabase) {
+      try {
+        await supabase.auth.signOut();
+        console.log('✅ Signed out from Supabase');
+      } catch (error) {
+        console.error('❌ Error signing out from Supabase:', error);
+      }
+    }
+
+    console.log('✅ Logout completed');
+  };
+
+
+  // Auth state management - consolidated and fixed
   useEffect(() => {
-    const getUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUser(user);
-    };
-    getUser();
+    // First, try to restore session from localStorage (for demo users)
+    const restoredFromLocal = restoreSession();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user ?? null);
+    if (!supabase) {
+      if (!restoredFromLocal) {
+        console.log('ℹ️ No Supabase and no local session found');
+      }
+      return;
+    }
+
+    // Initialize auth and set up listener
+    const initializeAuth = async () => {
+      try {
+        console.log('🔄 Initializing auth...');
+
+        // Check for existing session
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) {
+          console.error('❌ Session error:', sessionError);
+        } else if (session) {
+          console.log('✅ Found existing session:', session.user.email);
+          setUser(session.user);
+          await loadUserProfileFromDatabase(session.user);
+        } else {
+          console.log('ℹ️ No existing session found');
+        }
+      } catch (error) {
+        console.error('❌ Auth initialization error:', error);
+      }
+    };
+
+    initializeAuth();
+
+    // Single auth state change listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('🔔 Auth state change:', event, session?.user?.email);
+      console.log('🔍 Current profile before change:', userProfile);
+
+      if (event === 'SIGNED_IN' && session) {
+        console.log('✅ User signed in successfully:', session.user.email);
+        setUser(session.user);
+        console.log('📞 Calling loadUserProfileFromDatabase...');
+        await loadUserProfileFromDatabase(session.user);
+      } else if (event === 'SIGNED_OUT') {
+        console.log('👋 User signed out');
+        setUser(null);
+        setUserProfile({ name: '', bio: '', location: '', specialty: '', profileImage: '' });
+        console.log('🗑️ Profile cleared on sign out');
+      } else if (event === 'TOKEN_REFRESHED' && session) {
+        console.log('🔄 Token refreshed for:', session.user.email);
+        console.log('🔄 Current user state:', !!user, 'Profile name:', userProfile.name);
+        // Don't reload profile on token refresh if user is same
+      } else {
+        console.log('ℹ️ Auth event:', event, 'Session:', !!session);
+        if (!session) {
+          setUser(null);
+          setUserProfile({ name: '', bio: '', location: '', specialty: '', profileImage: '' });
+          console.log('🗑️ Profile cleared - no session');
+        }
+      }
     });
 
     return () => subscription.unsubscribe();
   }, []);
 
-  useEffect(() => {
-    const checkAuth = async () => {
-      if (supabase) {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          setUser(user);
-          
-          // Check if user exists in your users table, create if not
-          const { data: userRecord, error: userError } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', user.id)
-            .single();
-
-          if (userError && userError.code === 'PGRST116') {
-            // User doesn't exist in users table, create them
-            const { data: newUser, error: createError } = await supabase
-              .from('users')
-              .insert([
-                {
-                  id: user.id,
-                  email: user.email,
-                  name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Art Lover',
-                  profile_image_url: user.user_metadata?.avatar_url || `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop&crop=face`,
-                  location: user.user_metadata?.location || 'New York, NY'
-                }
-              ])
-              .select()
-              .single();
-
-            if (!createError && newUser) {
-              setUserProfile({
-                name: newUser.name || 'Art Lover',
-                bio: 'Passionate about discovering amazing art and connecting with talented artists.',
-                location: newUser.location || 'New York, NY',
-                specialty: 'Art Enthusiast',
-                profileImage: newUser.profile_image_url
-              });
-            }
-          } else if (!userError && userRecord) {
-            setUserProfile({
-              name: userRecord.name || 'Art Lover',
-              bio: 'Passionate about discovering amazing art and connecting with talented artists.',
-              location: userRecord.location || 'New York, NY', 
-              specialty: 'Art Enthusiast',
-              profileImage: userRecord.profile_image_url
-            });
-          } else {
-            // Fallback to user_metadata
-            setUserProfile({
-              name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'Art Lover',
-              bio: user.user_metadata?.bio || 'Passionate about discovering amazing art and connecting with talented artists.',
-              location: user.user_metadata?.location || 'New York, NY',
-              specialty: user.user_metadata?.specialty || 'Art Enthusiast',
-              profileImage: user.user_metadata?.avatar_url || `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop&crop=face`
-            });
-          }
-          console.log('User is logged in:', user.email);
-        }
-      }
-    };
-    checkAuth();
-    
-    if (supabase) {
-      const checkSession = async () => {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          setUser(session.user);
-          setUserProfile({
-            name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Art Lover',
-            bio: session.user.user_metadata?.bio || 'Passionate about discovering amazing art and connecting with talented artists.',
-            location: session.user.user_metadata?.location || 'New York, NY',
-            specialty: session.user.user_metadata?.specialty || 'Art Enthusiast',
-            profileImage: session.user.user_metadata?.avatar_url || `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop&crop=face`
-          });
-        }
-      };
-      checkSession();
-
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-        console.log('Auth state changed:', event, session);
-        if (event === 'SIGNED_IN' && session) {
-          setUser(session.user);
-          setUserProfile({
-            name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'Art Lover',
-            bio: session.user.user_metadata?.bio || 'Passionate about discovering amazing art and connecting with talented artists.',
-            location: session.user.user_metadata?.location || 'New York, NY',
-            specialty: session.user.user_metadata?.specialty || 'Art Enthusiast',
-            profileImage: session.user.user_metadata?.avatar_url || `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop&crop=face`
-          });
-        } else if (event === 'SIGNED_OUT') {
-          setUser(null);
-          setUserProfile({ name: '', bio: '', location: '', specialty: '', profileImage: '' });
-        }
-      });
-      
-      return () => subscription.unsubscribe();
-    }
-  }, []);
+  // Note: Mobile auth token handling is now done manually via the UI
 
   return {
     user,
@@ -279,6 +588,8 @@ export function useAuth() {
     updateProfile,
     handleLogin,
     handleGoogleLogin,
+    sendEmailCode,
+    handleEmailOtpLogin,
     handleMobileTestLogin,
     handleProfileUpdate,
     handleProfileImageUpload,

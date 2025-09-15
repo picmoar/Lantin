@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { animationStyles } from './styles/LantinApp.styles';
 import { artists } from './data/artists';
+import { supabase } from './lib/supabase';
 
 // Custom hooks
 import { useAuth } from './hooks/useAuth';
@@ -11,12 +12,14 @@ import { useSocial } from './hooks/useSocial';
 
 // Import components
 import Header from './components/Header';
-import DiscoverTab from './components/DiscoverTab'; 
+import DiscoverTab from './components/DiscoverTab';
 import ShopTab from './components/ShopTab';
 import BoothsTab from './components/BoothsTab';
+import MapSection from './components/MapSection';
 import MessagesTab from './components/MessagesTab';
 import ProfileTab from './components/ProfileTab';
 import BottomNavigation from './components/BottomNavigation';
+import LoginForm from './components/LoginForm';
 
 // Import modals
 import FullImageModal from './components/FullImageModal';
@@ -31,12 +34,20 @@ import ArtworkDetailModal from './components/ArtworkDetailModal';
 export default function LantinAppSimple() {
   const [activeTab, setActiveTab] = useState('discover');
 
+  // Custom function to handle tab switching with scroll to top
+  const handleTabChange = (newTab: string) => {
+    setActiveTab(newTab);
+    // Scroll to top when switching tabs
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   // Custom hooks
   const auth = useAuth();
   const shoppingHook = useShoppingCart();
   const modals = useModals();
   const userContent = useUserContent(auth.user, auth.userProfile);
   const social = useSocial();
+
 
   // Modal handlers that need checkout functionality
   const handleCheckout = () => {
@@ -53,10 +64,26 @@ export default function LantinAppSimple() {
     }
   };
 
+  const handleUpdateEvent = async (eventData) => {
+    const success = await userContent.updateEvent(eventData);
+    if (success) {
+      modals.closeEditEventModal();
+    }
+  };
+
   const handleCreateArtwork = async (artworkData) => {
     const success = await userContent.createArtwork(artworkData);
     if (success) {
       modals.closeCreateArtworkModal();
+    }
+  };
+
+  const handleUpdateArtwork = async (artworkData) => {
+    if (modals.selectedArtwork?.id) {
+      const success = await userContent.updateArtwork(modals.selectedArtwork.id, artworkData);
+      if (success) {
+        modals.closeEditArtworkModal();
+      }
     }
   };
 
@@ -78,6 +105,8 @@ export default function LantinAppSimple() {
     userContent.deleteArtwork(artworkId);
     modals.closeArtworkDetail();
   };
+
+
 
   return (
     <div>
@@ -110,7 +139,7 @@ export default function LantinAppSimple() {
             padding: '16px',
             paddingBottom: '100px'
           }}>
-            {/* Tab Content */}
+            {/* Tab Content - Always show tabs, handle login inside components */}
             {activeTab === 'discover' && (
               <DiscoverTab 
                 auth={auth}
@@ -125,12 +154,14 @@ export default function LantinAppSimple() {
               />
             )}
 
-            {activeTab === 'shop' && (
-              <ShopTab 
-                userArtworks={userContent.userArtworks}
-                addToCart={shoppingHook.addToCart}
-                setSelectedImage={modals.openFullImageModal}
-                setShowFullImageModal={() => {}} // Handled by openFullImageModal
+            {activeTab === 'map' && (
+              <MapSection
+                allBooths={userContent.allBooths}
+                allEvents={userContent.allEvents}
+                auth={auth}
+                onBoothSelect={modals.openBoothDetail}
+                onEventSelect={modals.openEventDetail}
+                isVisible={activeTab === 'map'}
               />
             )}
 
@@ -144,6 +175,7 @@ export default function LantinAppSimple() {
                 allEvents={userContent.allEvents}
                 setShowCreateBoothModal={modals.openCreateBoothModal}
                 setShowCreateEventModal={modals.openCreateEventModal}
+                setShowEditEventModal={modals.openEditEventModal}
                 setShowEditBoothModal={modals.openEditBoothModal}
                 setSelectedBooth={modals.openBoothDetail}
                 setSelectedEvent={modals.openEventDetail}
@@ -153,63 +185,146 @@ export default function LantinAppSimple() {
             )}
 
             {activeTab === 'message' && (
-              <MessagesTab 
-                auth={auth}
-                handleGoogleLogin={auth.handleGoogleLogin}
-                handleMobileTestLogin={auth.handleMobileTestLogin}
-              />
+              !auth.isLoggedIn ? (
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minHeight: '400px',
+                  textAlign: 'center',
+                  padding: '40px 20px'
+                }}>
+                  <div style={{fontSize: '48px', marginBottom: '16px'}}>💬</div>
+                  <h3 style={{fontSize: '20px', fontWeight: 'bold', color: '#111827', marginBottom: '8px'}}>
+                    Messages
+                  </h3>
+                  <p style={{fontSize: '16px', color: '#6b7280', marginBottom: '24px', lineHeight: '1.5'}}>
+                    Sign in to send messages and connect with other artists in the community.
+                  </p>
+                  <LoginForm 
+                    auth={auth}
+                    handleGoogleLogin={auth.handleGoogleLogin}
+                    sendEmailCode={auth.sendEmailCode}
+                    handleEmailOtpLogin={auth.handleEmailOtpLogin}
+                    handleMobileTestLogin={auth.handleMobileTestLogin}
+                  />
+                </div>
+              ) : (
+                <MessagesTab 
+                  auth={auth}
+                />
+              )
             )}
 
             {activeTab === 'profile' && (
-              <ProfileTab 
-                auth={auth}
-                favorites={social.favorites}
-                userArtworks={userContent.userArtworks}
-                savedBooths={social.savedBooths}
-                setShowFavoritesModal={modals.openFavoritesModal}
-                setShowCreateArtworkModal={modals.openCreateArtworkModal}
-                setSelectedArtwork={modals.openArtworkDetail}
-                deleteArtwork={userContent.deleteArtwork}
-                handleLogin={auth.handleLogin}
-                handleMobileTestLogin={auth.handleMobileTestLogin}
-                handleProfileImageUpload={auth.handleProfileImageUpload}
-                handleProfileUpdate={auth.handleProfileUpdate}
-              />
+              !auth.isLoggedIn ? (
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  minHeight: '400px',
+                  textAlign: 'center',
+                  padding: '40px 20px'
+                }}>
+                  <div style={{fontSize: '48px', marginBottom: '16px'}}>👤</div>
+                  <h3 style={{fontSize: '20px', fontWeight: 'bold', color: '#111827', marginBottom: '8px'}}>
+                    Your Profile
+                  </h3>
+                  <p style={{fontSize: '16px', color: '#6b7280', marginBottom: '24px', lineHeight: '1.5'}}>
+                    Create your artist profile, showcase your work, and manage your account.
+                  </p>
+                  <LoginForm 
+                    auth={auth}
+                    handleGoogleLogin={auth.handleGoogleLogin}
+                    sendEmailCode={auth.sendEmailCode}
+                    handleEmailOtpLogin={auth.handleEmailOtpLogin}
+                    handleMobileTestLogin={auth.handleMobileTestLogin}
+                  />
+                </div>
+              ) : (
+                <ProfileTab
+                  auth={auth}
+                  favorites={social.favorites}
+                  userArtworks={userContent.userArtworks}
+                  setShowFavoritesModal={modals.openFavoritesModal}
+                  setShowCreateArtworkModal={modals.openCreateArtworkModal}
+                  setSelectedArtwork={modals.openArtworkDetail}
+                  deleteArtwork={userContent.deleteArtwork}
+                  handleLogin={auth.handleLogin}
+                  sendEmailCode={auth.sendEmailCode}
+                  handleEmailOtpLogin={auth.handleEmailOtpLogin}
+                  handleMobileTestLogin={auth.handleMobileTestLogin}
+                  handleProfileImageUpload={auth.handleProfileImageUpload}
+                  handleProfileUpdate={auth.handleProfileUpdate}
+                />
+              )
             )}
           </div>
 
           {/* All Modals */}
           {modals.showCreateEventModal && (
-            <CreateEventModal 
+            <CreateEventModal
               onClose={modals.closeCreateEventModal}
               onSubmit={handleCreateEvent}
               userProfile={auth.userProfile}
-            />
-          )}
-
-          {modals.showCreateArtworkModal && (
-            <CreateArtworkModal 
-              onClose={modals.closeCreateArtworkModal}
-              onSubmit={handleCreateArtwork}
-              userProfile={auth.userProfile}
-              supabase={null} // Will be handled by hook
+              supabase={supabase}
               user={auth.user}
             />
           )}
 
+          {modals.showEditEventModal && userContent.userEvents?.length > 0 && (
+            <CreateEventModal
+              onClose={modals.closeEditEventModal}
+              onSubmit={handleUpdateEvent}
+              userProfile={auth.userProfile}
+              supabase={supabase}
+              user={auth.user}
+              initialData={userContent.userEvents[0]}
+              isEditing={true}
+            />
+          )}
+
+          {modals.showCreateArtworkModal && (
+            <CreateArtworkModal
+              onClose={modals.closeCreateArtworkModal}
+              onSubmit={handleCreateArtwork}
+              userProfile={auth.userProfile}
+              supabase={supabase}
+              user={auth.user}
+            />
+          )}
+
+          {modals.showEditArtworkModal && modals.selectedArtwork && (
+            <CreateArtworkModal
+              onClose={modals.closeEditArtworkModal}
+              onSubmit={handleUpdateArtwork}
+              userProfile={auth.userProfile}
+              supabase={supabase}
+              user={auth.user}
+              initialData={modals.selectedArtwork}
+              isEditing={true}
+            />
+          )}
+
           {modals.showCreateBoothModal && (
-            <CreateBoothModal 
+            <CreateBoothModal
               onClose={modals.closeCreateBoothModal}
               onSubmit={handleCreateBooth}
               userProfile={auth.userProfile}
+              supabase={supabase}
+              user={auth.user}
             />
           )}
 
           {modals.showEditBoothModal && userContent.userBooth && (
-            <CreateBoothModal 
+            <CreateBoothModal
               onClose={modals.closeEditBoothModal}
               onSubmit={handleUpdateBooth}
               userProfile={auth.userProfile}
+              supabase={supabase}
+              user={auth.user}
               initialData={userContent.userBooth}
               isEditing={true}
             />
@@ -235,10 +350,13 @@ export default function LantinAppSimple() {
           )}
 
           {modals.selectedArtwork && (
-            <ArtworkDetailModal 
+            <ArtworkDetailModal
               artwork={modals.selectedArtwork}
               isOwner={true}
               onClose={modals.closeArtworkDetail}
+              onEdit={() => {
+                modals.openEditArtworkModal();
+              }}
               onDelete={() => {
                 if (modals.selectedArtwork.id) {
                   handleDeleteArtwork(modals.selectedArtwork.id);
@@ -399,10 +517,10 @@ export default function LantinAppSimple() {
             />
           )}
 
-          {/* Bottom Navigation */}
+          {/* Bottom Navigation - Always show */}
           <BottomNavigation 
             activeTab={activeTab}
-            setActiveTab={setActiveTab}
+            setActiveTab={handleTabChange}
           />
         </div>
       </div>

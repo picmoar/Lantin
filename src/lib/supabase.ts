@@ -10,16 +10,29 @@ if (supabaseUrl && supabaseAnonKey) {
   try {
     supabase = createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
-        // Better mobile support
+        // Mobile support with OTP-only authentication
         autoRefreshToken: true,
         persistSession: true,
-        detectSessionInUrl: true,
-        flowType: 'pkce', // More secure for mobile
-        // Handle URL fragments properly on mobile
-        storage: typeof window !== 'undefined' ? window.localStorage : undefined
+        detectSessionInUrl: false, // Disable magic link detection
+        flowType: 'pkce', // Use PKCE flow for better security
+        storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+        storageKey: 'lantin-auth-token',
+        debug: true
+      },
+      global: {
+        headers: {
+          'X-Client-Info': 'lantin-app-otp-only',
+          'X-Supabase-Auth-Type': 'otp'
+        }
       }
     });
-    console.log('✅ Supabase connected successfully with mobile auth support');
+    console.log('✅ Supabase connected successfully with OTP-only authentication');
+    
+    // Make supabase available globally for debugging
+    if (typeof window !== 'undefined') {
+      window.supabase = supabase;
+    }
+    
   } catch (error) {
     console.warn('⚠️ Supabase connection failed:', error);
   }

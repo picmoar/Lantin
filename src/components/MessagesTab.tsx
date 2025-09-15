@@ -6,15 +6,9 @@ interface MessagesTabProps {
     userProfile: any;
     isLoggedIn: boolean;
   };
-  handleGoogleLogin: () => void;
-  handleMobileTestLogin: () => void;
 }
 
-export default function MessagesTab({ 
-  auth, 
-  handleGoogleLogin, 
-  handleMobileTestLogin 
-}: MessagesTabProps) {
+export default function MessagesTab({ auth }: MessagesTabProps) {
   const [showLantinChat, setShowLantinChat] = useState(false);
   const [messages, setMessages] = useState([
     {
@@ -25,6 +19,8 @@ export default function MessagesTab({
     }
   ]);
   const [newMessage, setNewMessage] = useState('');
+
+  // MessagesTab now only handles messaging functionality
   return (
     <div style={{
       padding: '0',
@@ -47,8 +43,8 @@ export default function MessagesTab({
         </h2>
       </div>
       
-      {auth.isLoggedIn ? (
-        <div style={{backgroundColor: '#ffffff'}}>
+      {/* Messages Content - User is logged in at this point */}
+      <div style={{backgroundColor: '#ffffff'}}>
           {/* Conversation List */}
           <div>
             {/* Lantin Official */}
@@ -340,71 +336,6 @@ export default function MessagesTab({
             </p>
           </div>
         </div>
-      ) : (
-        <div style={{
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          minHeight: '400px',
-          padding: '40px',
-          textAlign: 'center'
-        }}>
-          <div style={{fontSize: '48px', marginBottom: '20px'}}>🔐</div>
-          <h3 style={{
-            fontSize: '18px',
-            fontWeight: '600',
-            color: '#111827',
-            marginBottom: '12px'
-          }}>
-            Sign in to access messages
-          </h3>
-          <p style={{
-            fontSize: '14px',
-            color: '#6b7280',
-            lineHeight: '1.5',
-            marginBottom: '24px'
-          }}>
-            Connect with artists and start conversations about their work
-          </p>
-          <div style={{display: 'flex', flexDirection: 'column', gap: '12px', width: '100%', maxWidth: '280px'}}>
-            <button 
-              onClick={handleGoogleLogin}
-              style={{
-                backgroundColor: '#3b82f6',
-                color: 'white',
-                border: 'none',
-                borderRadius: '12px',
-                padding: '12px 24px',
-                fontSize: '14px',
-                fontWeight: '600',
-                cursor: 'pointer',
-                boxShadow: '0 4px 12px rgba(59, 130, 246, 0.3)',
-                width: '100%'
-              }}
-            >
-              🚀 Sign in with Google
-            </button>
-            <button 
-              onClick={handleMobileTestLogin}
-              style={{
-                backgroundColor: '#10b981',
-                color: 'white',
-                border: 'none',
-                borderRadius: '12px',
-                padding: '12px 24px',
-                fontSize: '14px',
-                fontWeight: '600',
-                cursor: 'pointer',
-                boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)',
-                width: '100%'
-              }}
-            >
-              📱 Mobile Test Login
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Lantin Chat Modal */}
       {showLantinChat && (

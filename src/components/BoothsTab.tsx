@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from 'react';
-import { Loader } from '@googlemaps/js-api-loader';
 
 interface BoothsTabProps {
   auth: {
@@ -15,6 +14,7 @@ interface BoothsTabProps {
   setShowCreateBoothModal: (show: boolean) => void;
   setShowCreateEventModal: (show: boolean) => void;
   setShowEditBoothModal: (show: boolean) => void;
+  setShowEditEventModal: (show: boolean) => void;
   setSelectedBooth: (booth: any) => void;
   setSelectedEvent: (event: any) => void;
   deleteBooth: (id: any) => void;
@@ -31,6 +31,7 @@ export default function BoothsTab({
   setShowCreateBoothModal,
   setShowCreateEventModal,
   setShowEditBoothModal,
+  setShowEditEventModal,
   setSelectedBooth,
   setSelectedEvent,
   deleteBooth,
@@ -42,146 +43,7 @@ export default function BoothsTab({
   const [currentUserBoothIndex, setCurrentUserBoothIndex] = useState(0);
   const [selectedLocation, setSelectedLocation] = useState('All Locations');
   const [selectedType, setSelectedType] = useState('All Types');
-  const [isMapLoaded, setIsMapLoaded] = useState(false);
-  
-  const mapRef = useRef(null);
-  const googleMapRef = useRef(null);
 
-  // Google Maps initialization
-  const initializeGoogleMap = async () => {
-    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
-    if (!apiKey || apiKey === 'your_google_maps_api_key_here') {
-      console.warn('Google Maps API key not configured. Using fallback map.');
-      setIsMapLoaded(false);
-      return;
-    }
-
-    try {
-      const loader = new Loader({
-        apiKey: apiKey,
-        version: 'weekly',
-        libraries: ['places', 'geometry']
-      });
-
-      const google = await loader.load();
-      
-      if (mapRef.current) {
-        const map = new google.maps.Map(mapRef.current, {
-          center: { lat: 40.7128, lng: -74.0060 },
-          zoom: 12,
-          styles: [
-            {
-              featureType: 'poi',
-              elementType: 'labels',
-              stylers: [{ visibility: 'off' }]
-            },
-            {
-              featureType: 'transit',
-              elementType: 'labels',
-              stylers: [{ visibility: 'off' }]
-            }
-          ],
-          disableDefaultUI: true,
-          zoomControl: true,
-          mapTypeControl: false,
-          streetViewControl: false,
-          fullscreenControl: false
-        });
-
-        googleMapRef.current = map;
-        setIsMapLoaded(true);
-        addBoothMarkers(map, google);
-      }
-    } catch (error) {
-      console.error('Error loading Google Maps:', error);
-      setIsMapLoaded(false);
-    }
-  };
-
-  const addBoothMarkers = (map: any, google: any) => {
-    allBooths.forEach((booth, idx) => {
-      let position;
-      
-      if (booth.latitude && booth.longitude) {
-        position = { lat: parseFloat(booth.latitude), lng: parseFloat(booth.longitude) };
-      } else {
-        const demoPositions = [
-          { lat: 40.7589, lng: -73.9851 },
-          { lat: 40.7505, lng: -73.9934 },
-          { lat: 40.7282, lng: -73.9942 },
-          { lat: 40.7614, lng: -73.9776 },
-          { lat: 40.6892, lng: -73.9442 },
-          { lat: 40.7831, lng: -73.9712 }
-        ];
-        position = demoPositions[idx % demoPositions.length];
-      }
-      
-      const isUserBooth = auth.user && booth.artist_id === auth.user?.id;
-      const markerColor = isUserBooth ? '#10b981' : '#8b5cf6';
-      
-      let boothEmoji = '🎨';
-      switch(booth.type) {
-        case 'store': boothEmoji = '🏪'; break;
-        case 'studio': boothEmoji = '🏛️'; break;
-        case 'market': boothEmoji = '🛒'; break;
-        case 'popup':
-        default: boothEmoji = '🎨'; break;
-      }
-      
-      const marker = new google.maps.Marker({
-        position: position,
-        map: map,
-        title: `${booth.name} - ${booth.artist}${booth.formatted_address ? '\n' + booth.formatted_address : ''}`,
-        icon: {
-          url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(
-            '<svg width="40" height="48" viewBox="0 0 40 48" fill="none" xmlns="http://www.w3.org/2000/svg">' +
-              '<path d="M20 0C11.163 0 4 7.163 4 16c0 16 16 28 16 28s16-12 16-28c0-8.837-7.163-16-16-16z" fill="' + markerColor + '" stroke="#ffffff" stroke-width="2"/>' +
-              '<circle cx="20" cy="16" r="10" fill="white"/>' +
-              '<text x="20" y="22" text-anchor="middle" fill="' + markerColor + '" font-size="14" font-weight="bold">' + boothEmoji + '</text>' +
-            '</svg>'
-          )}`,
-          scaledSize: new google.maps.Size(40, 48),
-          anchor: new google.maps.Point(20, 48)
-        }
-      });
-
-      marker.addListener('click', () => {
-        setSelectedBooth({
-          id: booth.id,
-          name: booth.name,
-          artist: booth.artist,
-          operator_name: booth.operator_name,
-          location: booth.location,
-          image: booth.image,
-          description: booth.description,
-          start_date: booth.start_date,
-          end_date: booth.end_date,
-          start_time: booth.start_time,
-          end_time: booth.end_time,
-          highlight_photos: booth.highlight_photos || [],
-          visitors: 45 + (idx * 15)
-        });
-      });
-    });
-  };
-
-  useEffect(() => {
-    if (boothSectionView !== 'map' && isMapLoaded) {
-      setIsMapLoaded(false);
-      if (googleMapRef.current) {
-        googleMapRef.current = null;
-      }
-      if (mapRef.current) {
-        mapRef.current.innerHTML = '';
-      }
-    }
-  }, [boothSectionView]);
-
-  useEffect(() => {
-    if (boothSectionView === 'map' && !isMapLoaded) {
-      setTimeout(() => initializeGoogleMap(), 100);
-    }
-  }, [boothSectionView, allBooths]);
 
   return (
     <>
@@ -236,22 +98,6 @@ export default function BoothsTab({
             }}
           >
             Events
-          </button>
-          <button
-            onClick={() => setBoothSectionView('map')}
-            style={{
-              padding: '4px 12px',
-              backgroundColor: boothSectionView === 'map' ? 'white' : 'transparent',
-              color: boothSectionView === 'map' ? '#111827' : '#6b7280',
-              border: 'none',
-              borderRadius: '6px',
-              fontSize: '12px',
-              fontWeight: '600',
-              cursor: 'pointer',
-              transition: 'all 0.2s ease'
-            }}
-          >
-            Map
           </button>
         </div>
       </div>
@@ -854,8 +700,7 @@ export default function BoothsTab({
                             }}
                             onClick={(e) => {
                               e.stopPropagation();
-                              // TODO: Add edit event functionality
-                              alert('Edit event functionality coming soon!');
+                              setShowEditEventModal(true);
                             }}
                             onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#7c3aed'}
                             onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#8b5cf6'}
@@ -1069,171 +914,6 @@ export default function BoothsTab({
         </>
       )}
 
-      {/* Map Content */}
-      {boothSectionView === 'map' && (
-        <div style={{
-          height: '70vh',
-          backgroundColor: '#f8fafc',
-          borderRadius: '16px',
-          overflow: 'hidden',
-          position: 'relative',
-          border: '1px solid #e5e7eb',
-          zIndex: 1
-        }}>
-          {/* Map Header */}
-          <div style={{
-            padding: '16px',
-            backgroundColor: 'white',
-            borderBottom: '1px solid #e5e7eb',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center'
-          }}>
-            <div>
-              <h3 style={{fontSize: '18px', fontWeight: '600', margin: 0, color: '#111827'}}>
-                Artist Locations
-              </h3>
-              <p style={{fontSize: '14px', color: '#6b7280', margin: '4px 0 0 0'}}>
-                {allBooths.length} booths & studios nearby
-              </p>
-            </div>
-            <div style={{display: 'flex', gap: '8px'}}>
-              <button style={{
-                padding: '6px 12px',
-                backgroundColor: '#8b5cf6',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                fontSize: '12px',
-                fontWeight: '500',
-                cursor: 'pointer'
-              }}>
-                🎯 Near Me
-              </button>
-              <button style={{
-                padding: '6px 12px',
-                backgroundColor: '#f3f4f6',
-                color: '#374151',
-                border: 'none',
-                borderRadius: '6px',
-                fontSize: '12px',
-                fontWeight: '500',
-                cursor: 'pointer'
-              }}>
-                🎨 Featured
-              </button>
-            </div>
-          </div>
-
-          {/* Google Maps Container */}
-          <div style={{
-            position: 'relative',
-            height: 'calc(100% - 80px)',
-            overflow: 'hidden'
-          }}>
-            <div 
-              ref={mapRef}
-              style={{
-                width: '100%',
-                height: '100%',
-                display: isMapLoaded ? 'block' : 'none'
-              }}
-            />
-            
-            {!isMapLoaded && (
-              <div style={{
-                width: '100%',
-                height: '100%',
-                backgroundColor: '#e5e7eb',
-                backgroundImage: 'linear-gradient(45deg, #f3f4f6 25%, transparent 25%), linear-gradient(-45deg, #f3f4f6 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #f3f4f6 75%), linear-gradient(-45deg, transparent 75%, #f3f4f6 75%)',
-                backgroundSize: '20px 20px',
-                backgroundPosition: '0 0, 0 10px, 10px -10px, -10px 0px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexDirection: 'column',
-                gap: '16px'
-              }}>
-                <div style={{ fontSize: '48px', opacity: 0.6 }}>🗺️</div>
-                <div style={{ textAlign: 'center', color: '#6b7280' }}>
-                  <p style={{fontSize: '16px', fontWeight: '600', margin: '0 0 8px 0'}}>
-                    Loading Map...
-                  </p>
-                  <p style={{fontSize: '14px', margin: 0}}>
-                    Add your Google Maps API key to see real locations
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <div style={{
-              position: 'absolute',
-              bottom: '20px',
-              right: '20px'
-            }}>
-              <button
-                onClick={() => setBoothSectionView('booths')}
-                style={{
-                  backgroundColor: '#1a365d',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '25px',
-                  padding: '12px 20px',
-                  fontSize: '14px',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}
-              >
-                <svg style={{width: '16px', height: '16px'}} fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM3 10a1 1 0 011-1h6a1 1 0 110 2H4a1 1 0 01-1-1zM3 16a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" />
-                </svg>
-                View List
-              </button>
-            </div>
-
-            <div style={{
-              position: 'absolute',
-              top: '16px',
-              right: '16px'
-            }}>
-              <button
-                onClick={() => {
-                  if (googleMapRef.current && navigator.geolocation) {
-                    navigator.geolocation.getCurrentPosition((position) => {
-                      const userLocation = {
-                        lat: position.coords.latitude,
-                        lng: position.coords.longitude
-                      };
-                      googleMapRef.current.setCenter(userLocation);
-                      googleMapRef.current.setZoom(15);
-                    });
-                  }
-                }}
-                style={{
-                  width: '44px',
-                  height: '44px',
-                  backgroundColor: 'white',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '8px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '18px',
-                  cursor: 'pointer',
-                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)'
-                }}
-                title="Go to my location"
-              >
-                📍
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }

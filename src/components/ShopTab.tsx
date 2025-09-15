@@ -1,4 +1,9 @@
 interface ShopTabProps {
+  auth: {
+    user: any;
+    userProfile: any;
+    isLoggedIn: boolean;
+  };
   userArtworks: any[];
   addToCart: (item: any) => void;
   setSelectedImage: (image: any) => void;
@@ -6,11 +11,20 @@ interface ShopTabProps {
 }
 
 export default function ShopTab({ 
+  auth,
   userArtworks, 
   addToCart, 
   setSelectedImage, 
   setShowFullImageModal 
 }: ShopTabProps) {
+  // Helper function to check login before adding to cart
+  const handleAddToCart = (item: any) => {
+    if (!auth.isLoggedIn) {
+      alert('Please sign in to purchase artwork! 🛒\n\nTap the Profile tab to create your account.');
+      return;
+    }
+    addToCart(item);
+  };
   return (
     <div style={{ padding: '16px 16px 80px 16px' }}>
       {/* Search */}
@@ -195,7 +209,7 @@ export default function ShopTab({
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
-                          addToCart(product);
+                          handleAddToCart(product);
                         }}
                         style={{
                           backgroundColor: '#111827',
