@@ -23,7 +23,7 @@ export default function Header({ auth, handleLogin, handleLogout }: HeaderProps)
     },
     logoText: {
       fontWeight: 'bold',
-      fontSize: '18px'
+      fontSize: '22px'
     }
   };
 

@@ -13,8 +13,7 @@ import { useSocial } from './hooks/useSocial';
 // Import components
 import Header from './components/Header';
 import DiscoverTab from './components/DiscoverTab';
-import ShopTab from './components/ShopTab';
-import BoothsTab from './components/BoothsTab';
+import SpotlightTab from './components/SpotlightTab';
 import MapSection from './components/MapSection';
 import MessagesTab from './components/MessagesTab';
 import ProfileTab from './components/ProfileTab';
@@ -106,6 +105,13 @@ export default function LantinAppSimple() {
     modals.closeArtworkDetail();
   };
 
+  const handleViewRealUserProfile = (userId: string, userEmail: string) => {
+    // Navigate to profile tab and focus on the real user
+    setActiveTab('profile');
+    alert(`Viewing ${userEmail}'s profile! In a full implementation, this would navigate to their actual profile page with their artworks, bio, and content.`);
+  };
+
+
 
 
   return (
@@ -141,7 +147,7 @@ export default function LantinAppSimple() {
           }}>
             {/* Tab Content - Always show tabs, handle login inside components */}
             {activeTab === 'discover' && (
-              <DiscoverTab 
+              <DiscoverTab
                 auth={auth}
                 favorites={social.favorites}
                 following={social.following}
@@ -151,6 +157,8 @@ export default function LantinAppSimple() {
                 addToCart={shoppingHook.addToCart}
                 setFollowingCount={social.setFollowingCount}
                 followingCount={social.followingCount}
+                onViewRealUserProfile={handleViewRealUserProfile}
+                setSelectedArtwork={modals.openArtworkDetail}
               />
             )}
 
@@ -166,7 +174,7 @@ export default function LantinAppSimple() {
             )}
 
             {activeTab === 'booths' && (
-              <BoothsTab 
+              <SpotlightTab 
                 auth={auth}
                 userBooth={userContent.userBooth}
                 userBooths={userContent.userBooths}
@@ -195,7 +203,17 @@ export default function LantinAppSimple() {
                   textAlign: 'center',
                   padding: '40px 20px'
                 }}>
-                  <div style={{fontSize: '48px', marginBottom: '16px'}}>💬</div>
+                  <div style={{marginBottom: '16px'}}>
+                    <img
+                      src="/message.png"
+                      alt="Messages"
+                      style={{
+                        width: '48px',
+                        height: '48px',
+                        objectFit: 'contain'
+                      }}
+                    />
+                  </div>
                   <h3 style={{fontSize: '20px', fontWeight: 'bold', color: '#111827', marginBottom: '8px'}}>
                     Messages
                   </h3>
@@ -228,7 +246,17 @@ export default function LantinAppSimple() {
                   textAlign: 'center',
                   padding: '40px 20px'
                 }}>
-                  <div style={{fontSize: '48px', marginBottom: '16px'}}>👤</div>
+                  <div style={{marginBottom: '16px'}}>
+                    <img
+                      src="/profile.png"
+                      alt="Profile"
+                      style={{
+                        width: '48px',
+                        height: '48px',
+                        objectFit: 'contain'
+                      }}
+                    />
+                  </div>
                   <h3 style={{fontSize: '20px', fontWeight: 'bold', color: '#111827', marginBottom: '8px'}}>
                     Your Profile
                   </h3>

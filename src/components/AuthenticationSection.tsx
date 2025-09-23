@@ -78,7 +78,17 @@ export default function AuthenticationSection({
       textAlign: 'center',
       padding: '40px 20px'
     }}>
-      <div style={{fontSize: '48px', marginBottom: '16px'}}>👤</div>
+      <div style={{marginBottom: '16px'}}>
+        <img
+          src="/profile.png"
+          alt="Profile"
+          style={{
+            width: '48px',
+            height: '48px',
+            objectFit: 'contain'
+          }}
+        />
+      </div>
       <h3 style={{fontSize: '20px', fontWeight: 'bold', color: '#111827', marginBottom: '8px'}}>
         Your Profile
       </h3>
