@@ -344,8 +344,8 @@ export default function MapSection({ allBooths, allEvents, auth, onBoothSelect, 
               src="/map.png"
               alt="Map"
               style={{
-                width: '24px',
-                height: '24px',
+                width: '32px',
+                height: '32px',
                 objectFit: 'contain'
               }}
             />

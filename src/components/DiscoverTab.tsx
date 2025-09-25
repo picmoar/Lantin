@@ -76,12 +76,15 @@ export default function DiscoverTab({
     addToFavorites(artist);
   };
 
-  const handleFollowArtist = (artist: any) => {
+  const handleFollowArtist = async (artist: any) => {
+    console.log('🎯 DiscoverTab handleFollowArtist called', { artistName: artist.name, artistId: artist.id });
     if (!auth.isLoggedIn) {
       alert('Please sign in to follow artists! 👥\n\nTap the Profile tab to create your account.');
       return;
     }
-    followArtist(artist);
+    console.log('🚀 Calling followArtist from DiscoverTab');
+    await followArtist(artist);
+    console.log('✅ DiscoverTab followArtist completed');
   };
 
   const handleAddToCart = (item: any) => {
@@ -106,35 +109,26 @@ export default function DiscoverTab({
   // Use the discoverable artists hook
   const { artists, error, refetch, isLoading } = useDiscoverableArtists();
 
-  // Reset data when component mounts (when user navigates back to discover tab)
+  // Always refetch when component mounts - ensures fresh data on every tab switch
   useEffect(() => {
+    console.log('🔄 DiscoverTab mounted - fetching fresh data');
     refetch();
-    localStorage.setItem('lastDiscoverRefresh', Date.now().toString());
   }, []); // Run once when component mounts
 
-  // Refresh on window/tab focus with smart timing (like Instagram)
+  // Always refresh on window/tab focus for fresh content (like Instagram)
   useEffect(() => {
     const handleVisibilityChange = () => {
       // Only refresh when tab becomes visible (not when hidden)
       if (!document.hidden) {
-        const lastRefresh = localStorage.getItem('lastDiscoverRefresh');
-        const now = Date.now();
-        const fiveMinutes = 5 * 60 * 1000; // 5 minutes in milliseconds
-
-        // Only refresh if data is older than 5 minutes
-        if (!lastRefresh || (now - parseInt(lastRefresh)) > fiveMinutes) {
-          console.log('🔄 Refreshing discover feed - data is stale');
-          refetch();
-          localStorage.setItem('lastDiscoverRefresh', now.toString());
-        } else {
-          console.log('⚡ Discover feed data is fresh, skipping refresh');
-        }
+        console.log('🔄 Tab became visible - refreshing discover feed');
+        refetch();
       }
     };
 
     const handleFocus = () => {
       // Also refresh when window regains focus (mobile app behavior)
-      handleVisibilityChange();
+      console.log('🔄 Window focused - refreshing discover feed');
+      refetch();
     };
 
     // Listen for both visibility change and window focus
@@ -147,6 +141,13 @@ export default function DiscoverTab({
       window.removeEventListener('focus', handleFocus);
     };
   }, [refetch]); // Depend on refetch function
+
+  // Ensure currentArtistIndex is valid when artists array changes
+  useEffect(() => {
+    if (artists.length > 0 && currentArtistIndex >= artists.length) {
+      setCurrentArtistIndex(0);
+    }
+  }, [artists, currentArtistIndex]);
 
   const currentArtist = artists[currentArtistIndex];
 
@@ -363,13 +364,14 @@ export default function DiscoverTab({
     }, 300);
   };
 
-  const likeArtist = () => {
-    console.log('Liked artist:', currentArtist.name);
-    
+  const likeArtist = async () => {
+    console.log('❤️ Liked artist:', currentArtist.name);
+
     setLikeAnimation(true);
     setShowHearts(true);
     handleAddToFavorites(currentArtist);
-    
+    await handleFollowArtist(currentArtist);
+
     setTimeout(() => {
       setLikeAnimation(false);
       setTimeout(() => {

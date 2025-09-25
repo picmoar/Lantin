@@ -144,7 +144,7 @@ export function useDiscoverableArtists() {
         console.log(`🏪 User ${user.name}: Final boothData:`, boothData);
 
         return {
-          id: 1000 + index, // Start real users at ID 1000+ to avoid conflicts
+          id: user.id, // Use actual UUID from database
           name: user.name || 'Artist',
           specialty: user.specialty || 'Art Enthusiast',
           location: user.location || 'Art Studio',

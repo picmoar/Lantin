@@ -29,6 +29,7 @@ import CreateEventModal from './components/CreateEventModal';
 import CreateArtworkModal from './components/CreateArtworkModal';
 import CreateBoothModal from './components/CreateBoothModal';
 import ArtworkDetailModal from './components/ArtworkDetailModal';
+import FollowersModal from './components/FollowersModal';
 
 export default function LantinAppSimple() {
   const [activeTab, setActiveTab] = useState('discover');
@@ -45,7 +46,137 @@ export default function LantinAppSimple() {
   const shoppingHook = useShoppingCart();
   const modals = useModals();
   const userContent = useUserContent(auth.user, auth.userProfile);
-  const social = useSocial();
+  const social = useSocial(userContent.userArtworks, auth.userProfile, auth.user);
+
+  // Add test function to window for development testing
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      (window as any).testUnfollowFirst = () => {
+        const firstFollowing = social.following[0];
+        if (firstFollowing) {
+          console.log('🧪 Test unfollowing first artist:', firstFollowing.name);
+          social.unfollowArtist(firstFollowing.id);
+        } else {
+          console.log('❌ No artists being followed to unfollow');
+        }
+      };
+
+      // Add test function to check Supabase connection and table
+      (window as any).testSupabaseConnection = async () => {
+        console.log('🧪 Testing Supabase connection...');
+        try {
+          const { supabase } = await import('./lib/supabase');
+          console.log('📡 Supabase client:', !!supabase);
+
+          if (supabase) {
+            // Test if we can query the followers table
+            const { data, error } = await supabase
+              .from('followers')
+              .select('*')
+              .limit(5);
+
+            console.log('📊 Query result:', { data, error });
+            console.log('📋 Followers table data:', data?.length || 0, 'rows');
+          }
+        } catch (error) {
+          console.error('❌ Supabase test error:', error);
+        }
+      };
+
+      // Test direct database insertion
+      (window as any).testDirectDBInsert = async () => {
+        console.log('🧪 Testing direct database insertion...');
+        try {
+          const { supabase } = await import('./lib/supabase');
+
+          if (supabase) {
+            const testRecord = {
+              follower_id: '00000000-0000-4000-a000-000000000001',
+              following_id: '00000000-0000-4000-a000-000000000002',
+              follower_name: 'Test Follower',
+              follower_email: 'test@example.com',
+              follower_profile_image: 'https://via.placeholder.com/150',
+              follower_specialty: 'Test Artist',
+              follower_location: 'Test City'
+            };
+
+            console.log('📝 Inserting test record:', testRecord);
+
+            const { data, error } = await supabase
+              .from('followers')
+              .insert(testRecord)
+              .select();
+
+            console.log('📊 Insert result:', { data, error });
+
+            if (error) {
+              console.error('❌ Insert failed:', error);
+            } else {
+              console.log('✅ Insert successful:', data);
+            }
+          }
+        } catch (error) {
+          console.error('❌ Direct insert test error:', error);
+        }
+      };
+
+      // Test getUserFollowers directly
+      (window as any).testGetFollowers = async () => {
+        console.log('🧪 Testing getUserFollowers directly...');
+        try {
+          const { useSocial } = await import('./hooks/useSocial');
+
+          // Get current user ID - use the same ID as in your test data
+          const userId = '00000000-0000-4000-a000-00000000ed48';
+          console.log('🔑 Testing with userId:', userId);
+
+          // Import and call getUserFollowers directly
+          const { supabase } = await import('./lib/supabase');
+
+          if (supabase) {
+            const { data, error } = await supabase
+              .from('followers')
+              .select('*')
+              .eq('following_id', userId);
+
+            console.log('📊 Direct query result:', { data, error });
+          }
+        } catch (error) {
+          console.error('❌ Test getUserFollowers error:', error);
+        }
+      };
+
+      // Also add a function to simulate other users following you
+      (window as any).simulateUserFollowsYou = async (userName = 'Random Artist') => {
+        // Generate UUID from username for consistency
+        const generateUUID = (str) => {
+          let hash = 0;
+          for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash;
+          }
+
+          const hash1 = Math.abs(hash).toString(16).padStart(16, '0').slice(0, 8);          // 8 chars
+          const hash2 = Math.abs(hash * 2).toString(16).padStart(16, '0').slice(0, 4);     // 4 chars
+          const hash3 = Math.abs(hash * 3).toString(16).padStart(16, '0').slice(1, 4);     // 3 chars
+          const hash4 = Math.abs(hash * 4).toString(16).padStart(16, '0').slice(1, 4);     // 3 chars
+          const hash5 = Math.abs(hash * 5).toString(16).padStart(16, '0').slice(0, 12);    // 12 chars
+
+          return `${hash1}-${hash2}-4${hash3}-a${hash4}-${hash5}`;
+        };
+
+        const randomFollower = {
+          id: generateUUID(`${userName}_${Date.now()}`),
+          name: userName,
+          profileImage: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&h=150&fit=crop&crop=face',
+          specialty: 'Artist',
+          location: 'Art Studio'
+        };
+        await social.addFollower(randomFollower);
+      };
+    }
+  }, [social.addFollower]);
 
 
   // Modal handlers that need checkout functionality
@@ -134,10 +265,9 @@ export default function LantinAppSimple() {
         }}>
           
           {/* Header */}
-          <Header 
+          <Header
             auth={auth}
             handleLogin={auth.handleLogin}
-            handleLogout={auth.signOut}
           />
 
           {/* Content */}
@@ -275,8 +405,10 @@ export default function LantinAppSimple() {
                 <ProfileTab
                   auth={auth}
                   favorites={social.favorites}
+                  followers={social.followers}
                   userArtworks={userContent.userArtworks}
                   setShowFavoritesModal={modals.openFavoritesModal}
+                  setShowFollowersModal={modals.openFollowersModal}
                   setShowCreateArtworkModal={modals.openCreateArtworkModal}
                   setSelectedArtwork={modals.openArtworkDetail}
                   deleteArtwork={userContent.deleteArtwork}
@@ -424,7 +556,7 @@ export default function LantinAppSimple() {
                   justifyContent: 'space-between'
                 }}>
                   <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
-                    <span style={{fontSize: '20px'}}>❤️</span>
+                    <img src="/heart.png" alt="Heart" style={{width: '20px', height: '20px'}} />
                     <h2 style={{fontSize: '18px', fontWeight: 'bold', margin: 0, color: '#111827'}}>
                       My Favorites ({social.favorites.length})
                     </h2>
@@ -452,7 +584,6 @@ export default function LantinAppSimple() {
                       padding: '32px 16px',
                       color: '#6b7280'
                     }}>
-                      <span style={{fontSize: '48px', marginBottom: '12px', display: 'block', opacity: 0.5}}>💔</span>
                       <p style={{margin: '0 0 8px 0', fontSize: '16px', fontWeight: '500'}}>No favorites yet</p>
                       <p style={{margin: '0', fontSize: '14px'}}>Like artists to see them here</p>
                     </div>
@@ -524,6 +655,13 @@ export default function LantinAppSimple() {
                 </div>
               </div>
             </div>
+          )}
+
+          {modals.showFollowersModal && (
+            <FollowersModal
+              followers={social.followers}
+              onClose={modals.closeFollowersModal}
+            />
           )}
 
           {modals.selectedBooth && (

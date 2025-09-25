@@ -63,7 +63,7 @@ export default function ArtworkCarousel({
   return (
     <>
       {/* Artworks Gallery */}
-      <div style={{marginBottom: '32px'}}>
+      <div style={{marginBottom: '20px'}}>
         <div style={{display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px'}}>
           <div style={{display: 'flex', alignItems: 'center', gap: '8px'}}>
             <span style={{fontSize: '18px'}}>🎨</span>
@@ -79,26 +79,29 @@ export default function ArtworkCarousel({
             <button
               onClick={() => setShowArtworkSelector(true)}
               style={{
-                backgroundColor: '#f3f4f6',
-                border: '1px solid #e5e7eb',
-                borderRadius: '6px',
-                padding: '6px 12px',
-                fontSize: '12px',
-                fontWeight: '500',
-                color: '#6b7280',
-                cursor: 'pointer',
+                width: '32px',
+                height: '32px',
+                backgroundColor: 'rgba(97, 133, 139, 1)',
+                borderRadius: '50%',
+                border: 'none',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '4px'
+                justifyContent: 'center',
+                boxShadow: '0 4px 12px -2px rgba(128, 150, 147, 0.93)',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
+                color: 'white'
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#e5e7eb';
+                e.currentTarget.style.transform = 'scale(1.1)';
+                e.currentTarget.style.boxShadow = '0 6px 16px -2px rgba(97, 133, 139, 1)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = '#f3f4f6';
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = '0 4px 12px -2px rgba(97, 133, 139, 1)';
               }}
             >
-              ✏️ Edit
+              <img src="/edit.png" alt="Edit" style={{width: '16px', height: '16px'}} />
             </button>
           )}
         </div>

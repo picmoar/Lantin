@@ -135,6 +135,8 @@ export default function SpotlightTab({
                 <button
                   onClick={handleCreateBooth}
                   style={createButton}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(87, 113, 119, 1)'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(97, 133, 139, 1)'}
                 >
                   + Create Booth
                 </button>
@@ -169,6 +171,7 @@ export default function SpotlightTab({
                   booth={booth}
                   index={idx}
                   currentUserId={auth.user?.id}
+                  user={auth.user}
                   onBoothClick={handleBoothClick}
                   onDelete={handleDeleteBooth}
                 />
@@ -189,6 +192,8 @@ export default function SpotlightTab({
                 <button
                   onClick={handleCreateEvent}
                   style={createButton}
+                  onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(87, 113, 119, 1)'}
+                  onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(97, 133, 139, 1)'}
                 >
                   + Create Event
                 </button>
@@ -202,6 +207,7 @@ export default function SpotlightTab({
                       key={event.id}
                       event={event}
                       variant="user"
+                      user={auth.user}
                       onEventClick={handleEventClick}
                       onEdit={handleEditEvent}
                       onDelete={handleDeleteEvent}
@@ -228,6 +234,7 @@ export default function SpotlightTab({
                   key={event.id}
                   event={event}
                   variant="public"
+                  user={auth.user}
                   onEventClick={handleEventClick}
                 />
               ))}

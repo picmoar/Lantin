@@ -20,3 +20,4 @@ dist/
 
 # SQL files (optional)
 *.sql
+.vercel

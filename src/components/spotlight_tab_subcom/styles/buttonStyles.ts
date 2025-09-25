@@ -57,10 +57,10 @@ export const dangerButtonLarge: CSSProperties = {
   padding: '8px 16px'
 };
 
-// Success/create buttons (orange theme)
+// Success/create buttons (teal theme)
 export const createButton: CSSProperties = {
   ...baseButton,
-  backgroundColor: '#f59e0b',
+  backgroundColor: 'rgba(97, 133, 139, 1)',
   color: 'white',
   padding: '8px 12px',
   height: '28px',

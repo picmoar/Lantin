@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../../../lib/supabase';
 
 interface BoothCardProps {
   booth: any;
   index: number;
   currentUserId?: string;
+  user?: any;
   onBoothClick: (boothData: any) => void;
   onDelete: (boothId: any) => void;
 }
@@ -12,11 +14,112 @@ const BoothCard: React.FC<BoothCardProps> = ({
   booth,
   index,
   currentUserId,
+  user,
   onBoothClick,
   onDelete
 }) => {
+  const [hasVisited, setHasVisited] = useState(false);
+  const [currentVisitorCount, setCurrentVisitorCount] = useState(0);
+
+  // Load visit status and visitor count on mount
+  useEffect(() => {
+    const loadVisitData = async () => {
+      if (!supabase) return;
+
+      try {
+        // Get real visitor count from database
+        const { data: boothData, error: boothError } = await supabase
+          .from('booths')
+          .select('visitor_count')
+          .eq('id', booth.id)
+          .single();
+
+        if (boothData && !boothError) {
+          setCurrentVisitorCount(boothData.visitor_count || 0);
+        }
+
+        // Check if current user has visited (only if logged in)
+        if (user) {
+          const { data: visitData, error: visitError } = await supabase
+            .from('booth_visits')
+            .select('id')
+            .eq('booth_id', booth.id)
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+          if (visitData && !visitError) {
+            setHasVisited(true);
+          }
+        }
+      } catch (error) {
+        console.warn('Error loading visit data for booth card:', error);
+      }
+    };
+
+    loadVisitData();
+  }, [booth.id, user]);
+
+  const handleVisitToggle = async (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent card click
+
+    if (!user || !supabase) {
+      alert('Please log in to track your visits');
+      return;
+    }
+
+    try {
+      if (hasVisited) {
+        // Cancel visit - remove from database
+        const { error: deleteError } = await supabase
+          .from('booth_visits')
+          .delete()
+          .eq('booth_id', booth.id)
+          .eq('user_id', user.id);
+
+        if (!deleteError) {
+          // Decrement visitor count
+          const { error: updateError } = await supabase
+            .from('booths')
+            .update({ visitor_count: Math.max(0, currentVisitorCount - 1) })
+            .eq('id', booth.id);
+
+          if (!updateError) {
+            setCurrentVisitorCount(Math.max(0, currentVisitorCount - 1));
+            setHasVisited(false);
+          }
+        }
+      } else {
+        // Add visit - insert into database
+        const { error: visitError } = await supabase
+          .from('booth_visits')
+          .insert([{
+            booth_id: booth.id,
+            user_id: user.id
+          }]);
+
+        if (!visitError) {
+          // Increment visitor count
+          const { error: updateError } = await supabase
+            .from('booths')
+            .update({ visitor_count: currentVisitorCount + 1 })
+            .eq('id', booth.id);
+
+          if (!updateError) {
+            setCurrentVisitorCount(currentVisitorCount + 1);
+            setHasVisited(true);
+          }
+        } else if (visitError.code === '23505') {
+          // Duplicate key - user already visited, just update local state
+          setHasVisited(true);
+        }
+      }
+    } catch (error) {
+      console.warn('Error toggling booth visit:', error);
+    }
+  };
+
   const handleCardClick = (e: React.MouseEvent) => {
-    if (!e.target.closest('.booth-delete-button')) {
+    if (!e.target.closest('.booth-delete-button') && !e.target.closest('.booth-visit-button')) {
       const selectedBoothData = {
         id: booth.id,
         name: booth.name,
@@ -79,36 +182,38 @@ const BoothCard: React.FC<BoothCardProps> = ({
           <span style={{fontSize: '13px', color: '#6b7280'}}>{booth.location}</span>
         </div>
         <div style={{display: 'flex', gap: '8px'}}>
-          <button style={{
-            flex: 1,
-            padding: '6px 12px',
-            backgroundColor: '#8b5cf6',
-            color: 'white',
-            border: 'none',
-            borderRadius: '6px',
-            fontSize: '12px',
-            fontWeight: '500',
-            cursor: 'pointer'
-          }}>
-            Visit
+          <button
+            onClick={handleVisitToggle}
+            className="booth-visit-button"
+            style={{
+              flex: 1,
+              padding: '6px 12px',
+              backgroundColor: hasVisited ? '#dc2626' : '#61858b',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              fontSize: '12px',
+              fontWeight: '500',
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}
+            onMouseEnter={(e) => {
+              if (hasVisited) {
+                e.currentTarget.style.backgroundColor = '#b91c1c';
+              } else {
+                e.currentTarget.style.backgroundColor = '#57717a';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (hasVisited) {
+                e.currentTarget.style.backgroundColor = '#dc2626';
+              } else {
+                e.currentTarget.style.backgroundColor = '#61858b';
+              }
+            }}
+          >
+            {hasVisited ? 'Cancel Visit' : 'Visit'}
           </button>
-          {currentUserId && booth.artist_id === currentUserId && (
-            <button
-              onClick={handleDeleteClick}
-              className="booth-delete-button"
-              style={{
-                padding: '6px 12px',
-                backgroundColor: '#dc2626',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                fontSize: '12px',
-                cursor: 'pointer'
-              }}
-            >
-              Delete
-            </button>
-          )}
         </div>
       </div>
     </div>

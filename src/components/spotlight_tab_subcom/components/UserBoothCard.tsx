@@ -97,14 +97,17 @@ const UserBoothCard: React.FC<UserBoothCardProps> = ({
             onClick={onEdit}
             style={{
               padding: '8px 16px',
-              backgroundColor: '#8b5cf6',
+              backgroundColor: 'rgba(97, 133, 139, 1)',
               color: 'white',
               border: 'none',
               borderRadius: '8px',
               fontSize: '14px',
               fontWeight: '500',
-              cursor: 'pointer'
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
             }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(87, 113, 119, 1)'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(97, 133, 139, 1)'}
           >
             Edit
           </button>

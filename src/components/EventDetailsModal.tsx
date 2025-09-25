@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
 interface Event {
@@ -45,47 +45,100 @@ const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
   user
 }) => {
   const [hasRegistered, setHasRegistered] = useState(false);
-  const [currentAttendeeCount, setCurrentAttendeeCount] = useState(event.attendees || 0);
+  const [currentAttendeeCount, setCurrentAttendeeCount] = useState(0);
 
-  const handleRegisterForEvent = async () => {
-    if (!user || !supabase || hasRegistered) {
-      alert(`Opening registration for ${event.title}...`);
-      onClose();
+  // Load real attendee count and check registration status on component mount
+  useEffect(() => {
+    const loadEventData = async () => {
+      if (!supabase) return;
+
+      try {
+        // Get real attendee count from database
+        const { data: eventData, error: eventError } = await supabase
+          .from('events')
+          .select('attendee_count')
+          .eq('id', event.id)
+          .single();
+
+        if (eventData && !eventError) {
+          setCurrentAttendeeCount(eventData.attendee_count || 0);
+        }
+
+        // Check if current user has registered (only if logged in)
+        if (user) {
+          const { data: registrationData, error: registrationError } = await supabase
+            .from('event_registrations')
+            .select('id')
+            .eq('event_id', event.id)
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+          if (registrationData && !registrationError) {
+            setHasRegistered(true);
+          }
+        }
+      } catch (error) {
+        console.warn('Error loading event data:', error);
+      }
+    };
+
+    loadEventData();
+  }, [event.id, user, supabase]);
+
+  const handleRegistrationToggle = async () => {
+    if (!user || !supabase) {
+      alert('Please log in to register for events');
       return;
     }
 
     try {
-      // Record the registration
-      const { error: registrationError } = await supabase
-        .from('event_registrations')
-        .insert([{
-          event_id: event.id,
-          user_id: user.id
-        }]);
+      if (hasRegistered) {
+        // Cancel registration - remove from database
+        const { error: deleteError } = await supabase
+          .from('event_registrations')
+          .delete()
+          .eq('event_id', event.id)
+          .eq('user_id', user.id);
 
-      if (registrationError && !registrationError.message.includes('duplicate')) {
-        throw registrationError;
-      }
+        if (!deleteError) {
+          // Decrement attendee count
+          const { error: updateError } = await supabase
+            .from('events')
+            .update({ attendee_count: Math.max(0, currentAttendeeCount - 1) })
+            .eq('id', event.id);
 
-      // If registration was recorded (no duplicate error), increment counter
-      if (!registrationError) {
-        const { error: updateError } = await supabase
-          .from('events')
-          .update({ attendee_count: currentAttendeeCount + 1 })
-          .eq('id', event.id);
+          if (!updateError) {
+            setCurrentAttendeeCount(Math.max(0, currentAttendeeCount - 1));
+            setHasRegistered(false);
+          }
+        }
+      } else {
+        // Add registration - insert into database
+        const { error: registrationError } = await supabase
+          .from('event_registrations')
+          .insert([{
+            event_id: event.id,
+            user_id: user.id
+          }]);
 
-        if (!updateError) {
-          setCurrentAttendeeCount(currentAttendeeCount + 1);
+        if (!registrationError) {
+          // Increment attendee count
+          const { error: updateError } = await supabase
+            .from('events')
+            .update({ attendee_count: currentAttendeeCount + 1 })
+            .eq('id', event.id);
+
+          if (!updateError) {
+            setCurrentAttendeeCount(currentAttendeeCount + 1);
+            setHasRegistered(true);
+          }
+        } else if (registrationError.code === '23505') {
+          // Duplicate key - user already registered, just update local state
           setHasRegistered(true);
         }
       }
-
-      alert(`Successfully registered for ${event.title}!`);
-      onClose();
     } catch (error) {
-      console.error('Error registering for event:', error);
-      alert(`Successfully registered for ${event.title}!`);
-      onClose();
+      console.warn('Error toggling event registration:', error);
     }
   };
 
@@ -100,7 +153,7 @@ const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: 1000,
+      zIndex: 1010,
       padding: '20px'
     }}>
       <div style={{
@@ -312,147 +365,37 @@ const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
             </div>
           )}
 
-          {/* Fallback Highlights Section - only show if no photos */}
-          {(!event.highlight_photos || event.highlight_photos.length === 0) && (
-            <div style={{marginBottom: '20px'}}>
-              <h3 style={{
-                fontSize: '16px',
-                fontWeight: '600',
-                color: '#374151',
-                marginBottom: '12px',
-                margin: '0 0 12px 0'
-              }}>
-                ✨ What to expect
-              </h3>
-              <div style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '8px'
-              }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  padding: '10px 12px',
-                  backgroundColor: '#fef3f2',
-                  borderRadius: '8px',
-                  border: '1px solid #fecaca'
-                }}>
-                  <span style={{fontSize: '16px'}}>🎨</span>
-                  <span style={{fontSize: '14px', color: '#991b1b', fontWeight: '500'}}>
-                    Interactive art experience
-                  </span>
-                </div>
-                
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  padding: '10px 12px',
-                  backgroundColor: '#f0f9ff',
-                  borderRadius: '8px',
-                  border: '1px solid #bae6fd'
-                }}>
-                  <span style={{fontSize: '16px'}}>🤝</span>
-                  <span style={{fontSize: '14px', color: '#0c4a6e', fontWeight: '500'}}>
-                    Meet fellow art enthusiasts
-                  </span>
-                </div>
-                
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  padding: '10px 12px',
-                  backgroundColor: '#f0fdf4',
-                  borderRadius: '8px',
-                  border: '1px solid #bbf7d0'
-                }}>
-                  <span style={{fontSize: '16px'}}>📚</span>
-                  <span style={{fontSize: '14px', color: '#14532d', fontWeight: '500'}}>
-                    Learn new techniques
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
 
-          {/* Stats - simplified */}
+          {/* Attendee Count */}
           <div style={{
-            display: 'grid', 
-            gridTemplateColumns: '1fr 1fr', 
-            gap: '16px', 
             marginBottom: '24px'
           }}>
             <div style={{
               textAlign: 'center',
               padding: '16px',
-              backgroundColor: '#f0f9ff',
+              backgroundColor: 'rgba(97, 133, 139, 0.1)',
               borderRadius: '12px'
             }}>
-              <div style={{fontSize: '20px', fontWeight: '700', color: '#0284c7', marginBottom: '4px'}}>
+              <div style={{fontSize: '20px', fontWeight: '700', color: '#61858b', marginBottom: '4px'}}>
                 {currentAttendeeCount}
                 {event.max_attendees && `/${event.max_attendees}`}
               </div>
-              <div style={{fontSize: '13px', color: '#0c4a6e', fontWeight: '500'}}>
+              <div style={{fontSize: '13px', color: '#61858b', fontWeight: '500'}}>
                 Attendees
-              </div>
-            </div>
-            <div style={{
-              textAlign: 'center',
-              padding: '16px',
-              backgroundColor: '#fef3f2',
-              borderRadius: '12px'
-            }}>
-              <div style={{fontSize: '20px', fontWeight: '700', color: '#dc2626', marginBottom: '4px'}}>
-                {event.price > 0 ? `$${event.price}` : 'Free'}
-              </div>
-              <div style={{fontSize: '13px', color: '#991b1b', fontWeight: '500'}}>
-                Price
               </div>
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div style={{display: 'flex', gap: '12px'}}>
+          {/* Action Button */}
+          <div>
             <button
-              onClick={handleRegisterForEvent}
+              onClick={handleRegistrationToggle}
               style={{
-                flex: 1,
+                width: '100%',
                 padding: '16px',
-                backgroundColor: hasRegistered ? '#6b7280' : '#8b5cf6',
+                backgroundColor: hasRegistered ? '#dc2626' : '#61858b',
                 color: 'white',
                 border: 'none',
-                borderRadius: '12px',
-                fontSize: '16px',
-                fontWeight: '600',
-                cursor: hasRegistered ? 'not-allowed' : 'pointer',
-                transition: 'all 0.2s'
-              }}
-              onMouseEnter={(e) => {
-                if (!hasRegistered) {
-                  e.currentTarget.style.backgroundColor = '#7c3aed';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!hasRegistered) {
-                  e.currentTarget.style.backgroundColor = '#8b5cf6';
-                }
-              }}
-            >
-              {hasRegistered ? '✅ Registered' : '🎫 Register'}
-            </button>
-            <button
-              onClick={() => {
-                onFollowOrganizer({id: event.id, name: event.organizer});
-                alert(`Now following ${event.organizer}!`);
-              }}
-              style={{
-                flex: 1,
-                padding: '16px',
-                backgroundColor: '#f8fafc',
-                color: '#374151',
-                border: '2px solid #e2e8f0',
                 borderRadius: '12px',
                 fontSize: '16px',
                 fontWeight: '600',
@@ -460,15 +403,21 @@ const EventDetailsModal: React.FC<EventDetailsModalProps> = ({
                 transition: 'all 0.2s'
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#f1f5f9';
-                e.currentTarget.style.borderColor = '#cbd5e1';
+                if (hasRegistered) {
+                  e.currentTarget.style.backgroundColor = '#b91c1c';
+                } else {
+                  e.currentTarget.style.backgroundColor = '#57717a';
+                }
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = '#f8fafc';
-                e.currentTarget.style.borderColor = '#e2e8f0';
+                if (hasRegistered) {
+                  e.currentTarget.style.backgroundColor = '#dc2626';
+                } else {
+                  e.currentTarget.style.backgroundColor = '#61858b';
+                }
               }}
             >
-              ❤️ Follow
+              {hasRegistered ? 'Cancel Registration' : 'Join Event'}
             </button>
           </div>
         </div>

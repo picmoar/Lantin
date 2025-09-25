@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 
 interface Booth {
@@ -45,47 +45,123 @@ const BoothDetailsModal: React.FC<BoothDetailsModalProps> = ({
   user
 }) => {
   const [hasVisited, setHasVisited] = useState(false);
-  const [currentVisitorCount, setCurrentVisitorCount] = useState(booth.visitors || 0);
+  const [currentVisitorCount, setCurrentVisitorCount] = useState(0);
 
-  const handleVisitBooth = async () => {
-    if (!user || !supabase || hasVisited) {
-      alert(`Opening directions to ${booth.name}...`);
-      onClose();
+  // Load real visitor count and check visit status on component mount
+  useEffect(() => {
+    const loadBoothData = async () => {
+      if (!supabase) return;
+
+      try {
+        // Get real visitor count from database
+        const { data: boothData, error: boothError } = await supabase
+          .from('booths')
+          .select('visitor_count')
+          .eq('id', booth.id)
+          .single();
+
+        if (boothError) {
+          console.warn('Could not load booth visitor count:', boothError);
+          setCurrentVisitorCount(0);
+        } else if (boothData) {
+          setCurrentVisitorCount(boothData.visitor_count || 0);
+        }
+
+        // Check if current user has visited (only if logged in)
+        if (user) {
+          const { data: visitData, error: visitError } = await supabase
+            .from('booth_visits')
+            .select('id')
+            .eq('booth_id', booth.id)
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+          if (visitError) {
+            console.warn('Could not check visit status:', visitError);
+            setHasVisited(false);
+          } else if (visitData) {
+            setHasVisited(true);
+          } else {
+            setHasVisited(false);
+          }
+        }
+      } catch (error) {
+        console.warn('Error loading booth data:', error);
+        setCurrentVisitorCount(0);
+        setHasVisited(false);
+      }
+    };
+
+    loadBoothData();
+  }, [booth.id, user, supabase]);
+
+  const handleVisitToggle = async () => {
+    if (!user || !supabase) {
+      alert('Please log in to track your visits');
       return;
     }
 
     try {
-      // Record the visit
-      const { error: visitError } = await supabase
-        .from('booth_visits')
-        .insert([{
-          booth_id: booth.id,
-          user_id: user.id
-        }]);
+      if (hasVisited) {
+        // Cancel visit - remove from database
+        const { error: deleteError } = await supabase
+          .from('booth_visits')
+          .delete()
+          .eq('booth_id', booth.id)
+          .eq('user_id', user.id);
 
-      if (visitError && !visitError.message.includes('duplicate')) {
-        throw visitError;
-      }
+        if (deleteError) {
+          console.warn('Error removing visit:', deleteError);
+          return;
+        }
 
-      // If visit was recorded (no duplicate error), increment counter
-      if (!visitError) {
+        // Decrement visitor count
+        const { error: updateError } = await supabase
+          .from('booths')
+          .update({ visitor_count: Math.max(0, currentVisitorCount - 1) })
+          .eq('id', booth.id);
+
+        if (updateError) {
+          console.warn('Error updating visitor count:', updateError);
+        } else {
+          setCurrentVisitorCount(Math.max(0, currentVisitorCount - 1));
+          setHasVisited(false);
+        }
+      } else {
+        // Add visit - insert into database
+        const { error: visitError } = await supabase
+          .from('booth_visits')
+          .insert([{
+            booth_id: booth.id,
+            user_id: user.id
+          }]);
+
+        if (visitError) {
+          if (visitError.code === '23505') {
+            // Duplicate key - user already visited, just update local state
+            setHasVisited(true);
+            return;
+          } else {
+            console.warn('Error adding visit:', visitError);
+            return;
+          }
+        }
+
+        // Increment visitor count
         const { error: updateError } = await supabase
           .from('booths')
           .update({ visitor_count: currentVisitorCount + 1 })
           .eq('id', booth.id);
 
-        if (!updateError) {
+        if (updateError) {
+          console.warn('Error updating visitor count:', updateError);
+        } else {
           setCurrentVisitorCount(currentVisitorCount + 1);
           setHasVisited(true);
         }
       }
-
-      alert(`Opening directions to ${booth.name}...`);
-      onClose();
     } catch (error) {
-      console.error('Error recording booth visit:', error);
-      alert(`Opening directions to ${booth.name}...`);
-      onClose();
+      console.warn('Error toggling booth visit:', error);
     }
   };
   return (
@@ -99,7 +175,7 @@ const BoothDetailsModal: React.FC<BoothDetailsModalProps> = ({
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      zIndex: 1000,
+      zIndex: 1010,
       padding: '20px'
     }}>
       <div style={{
@@ -311,146 +387,36 @@ const BoothDetailsModal: React.FC<BoothDetailsModalProps> = ({
             </div>
           )}
 
-          {/* Fallback Highlights Section - only show if no photos */}
-          {(!booth.highlight_photos || booth.highlight_photos.length === 0) && (
-            <div style={{marginBottom: '20px'}}>
-              <h3 style={{
-                fontSize: '16px',
-                fontWeight: '600',
-                color: '#374151',
-                marginBottom: '12px',
-                margin: '0 0 12px 0'
-              }}>
-                ✨ Highlights
-              </h3>
-              <div style={{
-                display: 'flex',
-                flexDirection: 'column',
-                gap: '8px'
-              }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  padding: '10px 12px',
-                  backgroundColor: '#fef3f2',
-                  borderRadius: '8px',
-                  border: '1px solid #fecaca'
-                }}>
-                  <span style={{fontSize: '16px'}}>🎨</span>
-                  <span style={{fontSize: '14px', color: '#991b1b', fontWeight: '500'}}>
-                    Original artwork on display
-                  </span>
-                </div>
-                
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  padding: '10px 12px',
-                  backgroundColor: '#f0f9ff',
-                  borderRadius: '8px',
-                  border: '1px solid #bae6fd'
-                }}>
-                  <span style={{fontSize: '16px'}}>🗣️</span>
-                  <span style={{fontSize: '14px', color: '#0c4a6e', fontWeight: '500'}}>
-                    Meet the artist in person
-                  </span>
-                </div>
-                
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '10px',
-                  padding: '10px 12px',
-                  backgroundColor: '#f0fdf4',
-                  borderRadius: '8px',
-                  border: '1px solid #bbf7d0'
-                }}>
-                  <span style={{fontSize: '16px'}}>💰</span>
-                  <span style={{fontSize: '14px', color: '#14532d', fontWeight: '500'}}>
-                    Artwork available for purchase
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
 
-          {/* Stats - simplified */}
+          {/* Visitor Count */}
           <div style={{
-            display: 'grid', 
-            gridTemplateColumns: '1fr 1fr', 
-            gap: '16px', 
             marginBottom: '24px'
           }}>
             <div style={{
               textAlign: 'center',
               padding: '16px',
-              backgroundColor: '#fef3f2',
+              backgroundColor: 'rgba(97, 133, 139, 0.1)',
               borderRadius: '12px'
             }}>
-              <div style={{fontSize: '20px', fontWeight: '700', color: '#dc2626', marginBottom: '4px'}}>
+              <div style={{fontSize: '20px', fontWeight: '700', color: '#61858b', marginBottom: '4px'}}>
                 {currentVisitorCount}
               </div>
-              <div style={{fontSize: '13px', color: '#7f1d1d', fontWeight: '500'}}>
+              <div style={{fontSize: '13px', color: '#61858b', fontWeight: '500'}}>
                 Visitors
-              </div>
-            </div>
-            <div style={{
-              textAlign: 'center',
-              padding: '16px',
-              backgroundColor: '#f0f9ff',
-              borderRadius: '12px'
-            }}>
-              <div style={{fontSize: '20px', fontWeight: '700', color: '#0284c7', marginBottom: '4px'}}>
-                Live
-              </div>
-              <div style={{fontSize: '13px', color: '#0c4a6e', fontWeight: '500'}}>
-                Status
               </div>
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div style={{display: 'flex', gap: '12px'}}>
+          {/* Action Button */}
+          <div>
             <button
-              onClick={handleVisitBooth}
+              onClick={handleVisitToggle}
               style={{
-                flex: 1,
+                width: '100%',
                 padding: '16px',
-                backgroundColor: hasVisited ? '#6b7280' : '#10b981',
+                backgroundColor: hasVisited ? '#dc2626' : '#61858b',
                 color: 'white',
                 border: 'none',
-                borderRadius: '12px',
-                fontSize: '16px',
-                fontWeight: '600',
-                cursor: hasVisited ? 'not-allowed' : 'pointer',
-                transition: 'all 0.2s'
-              }}
-              onMouseEnter={(e) => {
-                if (!hasVisited) {
-                  e.currentTarget.style.backgroundColor = '#059669';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!hasVisited) {
-                  e.currentTarget.style.backgroundColor = '#10b981';
-                }
-              }}
-            >
-              {hasVisited ? '✅ Visited' : '📍 Visit'}
-            </button>
-            <button
-              onClick={() => {
-                onFollowArtist({id: booth.id, name: booth.artist});
-                alert(`Now following ${booth.artist}!`);
-              }}
-              style={{
-                flex: 1,
-                padding: '16px',
-                backgroundColor: '#f8fafc',
-                color: '#374151',
-                border: '2px solid #e2e8f0',
                 borderRadius: '12px',
                 fontSize: '16px',
                 fontWeight: '600',
@@ -458,15 +424,21 @@ const BoothDetailsModal: React.FC<BoothDetailsModalProps> = ({
                 transition: 'all 0.2s'
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.backgroundColor = '#f1f5f9';
-                e.currentTarget.style.borderColor = '#cbd5e1';
+                if (hasVisited) {
+                  e.currentTarget.style.backgroundColor = '#b91c1c';
+                } else {
+                  e.currentTarget.style.backgroundColor = '#57717a';
+                }
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.backgroundColor = '#f8fafc';
-                e.currentTarget.style.borderColor = '#e2e8f0';
+                if (hasVisited) {
+                  e.currentTarget.style.backgroundColor = '#dc2626';
+                } else {
+                  e.currentTarget.style.backgroundColor = '#61858b';
+                }
               }}
             >
-              ❤️ Follow
+              {hasVisited ? 'Cancel Visit' : 'Visit'}
             </button>
           </div>
         </div>

@@ -15,10 +15,13 @@ interface ProfileTabProps {
     userProfile: any;
     isLoggedIn: boolean;
     updateProfile: (updates: any) => void;
+    signOut: () => void;
   };
   favorites: any[];
+  followers: any[];
   userArtworks: any[];
   setShowFavoritesModal: (show: boolean) => void;
+  setShowFollowersModal: (show: boolean) => void;
   setShowCreateArtworkModal: (show: boolean) => void;
   setSelectedArtwork: (artwork: any) => void;
   deleteArtwork: (id: any) => void;
@@ -33,8 +36,10 @@ interface ProfileTabProps {
 export default function ProfileTab({
   auth,
   favorites,
+  followers,
   userArtworks,
   setShowFavoritesModal,
+  setShowFollowersModal,
   setShowCreateArtworkModal,
   setSelectedArtwork,
   deleteArtwork,
@@ -70,7 +75,9 @@ export default function ProfileTab({
             auth={auth}
             userArtworks={userArtworks}
             favorites={favorites}
+            followers={followers}
             setShowFavoritesModal={setShowFavoritesModal}
+            setShowFollowersModal={setShowFollowersModal}
             onEditClick={toggleEdit}
           />
 
@@ -91,14 +98,21 @@ export default function ProfileTab({
                 <button 
                 onClick={() => setShowCreateArtworkModal(true)}
                 style={{
-                  backgroundColor: '#8b5cf6',
+                  backgroundColor: 'rgba(97, 133, 139, 1)',
                   color: 'white',
                   border: 'none',
                   borderRadius: '6px',
                   padding: '6px 12px',
                   fontSize: '12px',
                   fontWeight: '600',
-                  cursor: 'pointer'
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(87, 113, 119, 1)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'rgba(97, 133, 139, 1)';
                 }}
                 >
                 + Add Artwork
@@ -153,6 +167,7 @@ export default function ProfileTab({
             />
           )}
 
+
           {/* Menu Items */}
           <div style={{display: 'flex', flexDirection: 'column', gap: '4px'}}>
             {[
@@ -201,21 +216,33 @@ export default function ProfileTab({
 
           {/* Sign Out */}
           <div style={{marginTop: '24px'}}>
-            <button style={{
-              width: '100%',
-              backgroundColor: '#fef2f2',
-              border: '1px solid #fecaca',
-              borderRadius: '12px',
-              padding: '16px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '8px',
-              color: '#dc2626',
-              fontWeight: '600',
-              fontSize: '16px',
-              cursor: 'pointer'
-            }}>
+            <button
+              onClick={auth.signOut}
+              style={{
+                width: '100%',
+                backgroundColor: '#fef2f2',
+                border: '1px solid #fecaca',
+                borderRadius: '12px',
+                padding: '16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                color: '#dc2626',
+                fontWeight: '600',
+                fontSize: '16px',
+                cursor: 'pointer',
+                transition: 'all 0.2s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = '#fee2e2';
+                e.currentTarget.style.borderColor = '#fca5a5';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = '#fef2f2';
+                e.currentTarget.style.borderColor = '#fecaca';
+              }}
+            >
               <span>🚪</span>
               Sign Out
             </button>

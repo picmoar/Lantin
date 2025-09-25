@@ -90,7 +90,7 @@ export function useAuth() {
             console.log('✅ Created new artist record:', newArtist);
             const newProfile = {
               name: newArtist.name || 'Artist',
-              bio: newArtist.bio || 'Passionate about creating and sharing amazing art.',
+              bio: newArtist.bio || '',
               location: newArtist.location || 'Art Studio',
               specialty: newArtist.specialty || 'Art Enthusiast',
               profileImage: newArtist.profile_image_url || `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop&crop=face`
@@ -103,7 +103,7 @@ export function useAuth() {
           console.log('✅ Loaded existing profile from database:', artistRecord);
           const existingProfile = {
             name: artistRecord.name || authUser.email?.split('@')[0] || 'Artist',
-            bio: artistRecord.bio || 'Passionate about creating and sharing amazing art.',
+            bio: artistRecord.bio || '',
             location: artistRecord.location || 'Art Studio',
             specialty: artistRecord.specialty || 'Art Enthusiast',
             profileImage: artistRecord.profile_image_url || `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&h=200&fit=crop&crop=face`

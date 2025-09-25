@@ -3,18 +3,18 @@ interface HeaderProps {
     isLoggedIn: boolean;
   };
   handleLogin: () => void;
-  handleLogout: () => void;
 }
 
-export default function Header({ auth, handleLogin, handleLogout }: HeaderProps) {
+export default function Header({ auth, handleLogin }: HeaderProps) {
   const styles = {
     header: {
       backgroundColor: 'white',
-      padding: '12px 16px',
+      padding: '16px 16px',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
-      borderBottom: '1px solid #e5e7eb'
+      borderBottom: '1px solid #e5e7eb',
+      minHeight: '50px'
     },
     logoContainer: {
       display: 'flex',
@@ -29,23 +29,10 @@ export default function Header({ auth, handleLogin, handleLogout }: HeaderProps)
 
   return (
     <div style={styles.header}>
-      {/* Left side - Login/Profile */}
+      {/* Left side - Login only when not logged in */}
       <div style={{ width: '60px', display: 'flex', justifyContent: 'flex-start' }}>
-        {auth.isLoggedIn ? (
-          <button 
-            onClick={handleLogout}
-            style={{
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              fontSize: '12px',
-              color: '#6b7280'
-            }}
-          >
-            👤 Logout
-          </button>
-        ) : (
-          <button 
+        {!auth.isLoggedIn && (
+          <button
             onClick={handleLogin}
             style={{
               background: 'none',
@@ -68,7 +55,7 @@ export default function Header({ auth, handleLogin, handleLogout }: HeaderProps)
           style={{
             width: '32px',
             height: '32px',
-            borderRadius: '4px'
+            borderRadius: '8px'
           }}
         />
         <div style={styles.logoText}>Lantin</div>

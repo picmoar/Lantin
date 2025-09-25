@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../../../lib/supabase';
 
 interface EventCardProps {
   event: any;
   variant: 'user' | 'public';
+  user?: any;
   onEventClick: (eventData: any) => void;
   onEdit?: () => void;
   onDelete?: (eventId: any) => void;
@@ -11,10 +13,111 @@ interface EventCardProps {
 const EventCard: React.FC<EventCardProps> = ({
   event,
   variant,
+  user,
   onEventClick,
   onEdit,
   onDelete
 }) => {
+  const [hasRegistered, setHasRegistered] = useState(false);
+  const [currentAttendeeCount, setCurrentAttendeeCount] = useState(0);
+
+  // Load registration status and attendee count on mount
+  useEffect(() => {
+    const loadRegistrationData = async () => {
+      if (!supabase) return;
+
+      try {
+        // Get real attendee count from database
+        const { data: eventData, error: eventError } = await supabase
+          .from('events')
+          .select('attendee_count')
+          .eq('id', event.id)
+          .single();
+
+        if (eventData && !eventError) {
+          setCurrentAttendeeCount(eventData.attendee_count || 0);
+        }
+
+        // Check if current user has registered (only if logged in)
+        if (user) {
+          const { data: registrationData, error: registrationError } = await supabase
+            .from('event_registrations')
+            .select('id')
+            .eq('event_id', event.id)
+            .eq('user_id', user.id)
+            .maybeSingle();
+
+          if (registrationData && !registrationError) {
+            setHasRegistered(true);
+          }
+        }
+      } catch (error) {
+        console.warn('Error loading registration data for event card:', error);
+      }
+    };
+
+    loadRegistrationData();
+  }, [event.id, user]);
+
+  const handleRegistrationToggle = async (e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent card click
+
+    if (!user || !supabase) {
+      alert('Please log in to register for events');
+      return;
+    }
+
+    try {
+      if (hasRegistered) {
+        // Cancel registration - remove from database
+        const { error: deleteError } = await supabase
+          .from('event_registrations')
+          .delete()
+          .eq('event_id', event.id)
+          .eq('user_id', user.id);
+
+        if (!deleteError) {
+          // Decrement attendee count
+          const { error: updateError } = await supabase
+            .from('events')
+            .update({ attendee_count: Math.max(0, currentAttendeeCount - 1) })
+            .eq('id', event.id);
+
+          if (!updateError) {
+            setCurrentAttendeeCount(Math.max(0, currentAttendeeCount - 1));
+            setHasRegistered(false);
+          }
+        }
+      } else {
+        // Add registration - insert into database
+        const { error: registrationError } = await supabase
+          .from('event_registrations')
+          .insert([{
+            event_id: event.id,
+            user_id: user.id
+          }]);
+
+        if (!registrationError) {
+          // Increment attendee count
+          const { error: updateError } = await supabase
+            .from('events')
+            .update({ attendee_count: currentAttendeeCount + 1 })
+            .eq('id', event.id);
+
+          if (!updateError) {
+            setCurrentAttendeeCount(currentAttendeeCount + 1);
+            setHasRegistered(true);
+          }
+        } else if (registrationError.code === '23505') {
+          // Duplicate key - user already registered, just update local state
+          setHasRegistered(true);
+        }
+      }
+    } catch (error) {
+      console.warn('Error toggling event registration:', error);
+    }
+  };
+
   const createEventData = () => ({
     id: event.id,
     title: event.title,
@@ -31,11 +134,13 @@ const EventCard: React.FC<EventCardProps> = ({
     price: event.price || 0,
     type: event.type,
     max_attendees: event.max_attendees,
-    attendees: event.attendees || 0
+    attendees: currentAttendeeCount
   });
 
-  const handleCardClick = () => {
-    onEventClick(createEventData());
+  const handleCardClick = (e: React.MouseEvent) => {
+    if (!e.target.closest('.event-delete-button') && !e.target.closest('.event-join-button')) {
+      onEventClick(createEventData());
+    }
   };
 
   const handleEditClick = (e: React.MouseEvent) => {
@@ -137,7 +242,7 @@ const EventCard: React.FC<EventCardProps> = ({
             </div>
             <div style={{display: 'flex', alignItems: 'center', gap: '4px'}}>
               <span style={{fontSize: '12px'}}>👥</span>
-              <span style={{fontSize: '13px', color: '#6b7280'}}>{event.attendees || 0}</span>
+              <span style={{fontSize: '13px', color: '#6b7280'}}>{currentAttendeeCount}</span>
             </div>
           </div>
         )}
@@ -150,7 +255,7 @@ const EventCard: React.FC<EventCardProps> = ({
                 style={{
                   flex: 1,
                   padding: '8px 12px',
-                  backgroundColor: '#8b5cf6',
+                  backgroundColor: 'rgba(97, 133, 139, 1)',
                   color: 'white',
                   border: 'none',
                   borderRadius: '8px',
@@ -160,8 +265,8 @@ const EventCard: React.FC<EventCardProps> = ({
                   transition: 'all 0.2s'
                 }}
                 onClick={handleEditClick}
-                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#7c3aed'}
-                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#8b5cf6'}
+                onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(87, 113, 119, 1)'}
+                onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'rgba(97, 133, 139, 1)'}
               >
                 Edit
               </button>
@@ -193,18 +298,37 @@ const EventCard: React.FC<EventCardProps> = ({
             </>
           ) : (
             <>
-              <button style={{
-                flex: 1,
-                padding: '6px 12px',
-                backgroundColor: '#8b5cf6',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                fontSize: '12px',
-                fontWeight: '500',
-                cursor: 'pointer'
-              }}>
-                Join Event
+              <button
+                onClick={handleRegistrationToggle}
+                className="event-join-button"
+                style={{
+                  flex: 1,
+                  padding: '6px 12px',
+                  backgroundColor: hasRegistered ? '#dc2626' : '#61858b',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  fontSize: '12px',
+                  fontWeight: '500',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s'
+                }}
+                onMouseEnter={(e) => {
+                  if (hasRegistered) {
+                    e.currentTarget.style.backgroundColor = '#b91c1c';
+                  } else {
+                    e.currentTarget.style.backgroundColor = '#57717a';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (hasRegistered) {
+                    e.currentTarget.style.backgroundColor = '#dc2626';
+                  } else {
+                    e.currentTarget.style.backgroundColor = '#61858b';
+                  }
+                }}
+              >
+                {hasRegistered ? 'Cancel Registration' : 'Join Event'}
               </button>
               <div style={{
                 display: 'flex',

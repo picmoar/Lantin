@@ -6,6 +6,7 @@ export function useModals() {
   const [showCreateBoothModal, setShowCreateBoothModal] = useState(false);
   const [showCartModal, setShowCartModal] = useState(false);
   const [showFavoritesModal, setShowFavoritesModal] = useState(false);
+  const [showFollowersModal, setShowFollowersModal] = useState(false);
   const [showFullImageModal, setShowFullImageModal] = useState(false);
   const [showEditBoothModal, setShowEditBoothModal] = useState(false);
   const [showEditEventModal, setShowEditEventModal] = useState(false);
@@ -29,6 +30,9 @@ export function useModals() {
   
   const openFavoritesModal = () => setShowFavoritesModal(true);
   const closeFavoritesModal = () => setShowFavoritesModal(false);
+
+  const openFollowersModal = () => setShowFollowersModal(true);
+  const closeFollowersModal = () => setShowFollowersModal(false);
   
   const openFullImageModal = (image) => {
     setSelectedImage(image);
@@ -64,6 +68,7 @@ export function useModals() {
     showCreateBoothModal,
     showCartModal,
     showFavoritesModal,
+    showFollowersModal,
     showFullImageModal,
     showEditBoothModal,
     showEditEventModal,
@@ -84,6 +89,8 @@ export function useModals() {
     closeCartModal,
     openFavoritesModal,
     closeFavoritesModal,
+    openFollowersModal,
+    closeFollowersModal,
     openFullImageModal,
     closeFullImageModal,
     openEditBoothModal,
